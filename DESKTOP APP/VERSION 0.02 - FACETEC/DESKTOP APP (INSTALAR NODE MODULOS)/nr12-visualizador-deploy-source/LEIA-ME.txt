@@ -1,0 +1,70 @@
+╔══════════════════════════════════════════════════════════════╗
+║   PLANTA FABRIL 3D — NR-12 / NR-06 VIEWER                   ║
+║   KazinhoSystems / ArrudaCorp                                ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║   ESTRUTURA DA PASTA:                                        ║
+║   ─────────────────────────────────────────────────────────  ║
+║   nr12-visualizador/                                         ║
+║   ├── index.html              ← Página principal             ║
+║   ├── css/style.css           ← Estilos                      ║
+║   ├── js/main.js              ← Visualizador 3D + Checklist  ║
+║   ├── assets/factory.obj      ← Modelo 3D (1,7 GB)           ║
+║   ├── deploy.sh               ← Script de instalação         ║
+║   ├── nr12-viewer.nginx.conf  ← Config do servidor web       ║
+║   └── LEIA-ME.txt             ← Este arquivo                 ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║   COMO FAZER O DEPLOY NA VPS (3 PASSOS)                      ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║   PASSO 1 — Enviar pasta para a VPS                          ║
+║   ─────────────────────────────────────────────────────────  ║
+║   Abra o PowerShell no seu PC e execute:                     ║
+║                                                              ║
+║   scp -r "C:\KazinhoSystems - ArrudaCorp\eva_ophim_site_     ║
+║   promocional\nr12-visualizador" root@IP_DA_VPS:/tmp/        ║
+║                                                              ║
+║   (substitua IP_DA_VPS pelo IP real da sua VPS Hostinger)   ║
+║                                                              ║
+║   PASSO 2 — Executar o script de deploy                      ║
+║   ─────────────────────────────────────────────────────────  ║
+║   Conecte na VPS via SSH:                                    ║
+║     ssh root@IP_DA_VPS                                       ║
+║                                                              ║
+║   Execute o script:                                          ║
+║     chmod +x /tmp/nr12-visualizador/deploy.sh               ║
+║     bash /tmp/nr12-visualizador/deploy.sh                    ║
+║                                                              ║
+║   O script vai:                                              ║
+║     ✓ Instalar Nginx automaticamente                         ║
+║     ✓ Criar /var/www/nr12-viewer/                            ║
+║     ✓ Copiar todos os arquivos                               ║
+║     ✓ Configurar o servidor web                              ║
+║     ✓ Exibir o link de acesso ao final                       ║
+║                                                              ║
+║   PASSO 3 — Acessar o site                                   ║
+║   ─────────────────────────────────────────────────────────  ║
+║     Abra o browser em: http://IP_DA_VPS                      ║
+║     O modelo 3D carrega automaticamente!                     ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║   OPCIONAL — Adicionar domínio depois                        ║
+║   ─────────────────────────────────────────────────────────  ║
+║   No seu registrador DNS, crie:                              ║
+║     Tipo A  →  @    →  IP_DA_VPS                             ║
+║     Tipo A  →  www  →  IP_DA_VPS                             ║
+║                                                              ║
+║   Na VPS, edite o Nginx:                                     ║
+║     nano /etc/nginx/sites-available/nr12-viewer              ║
+║     Troque: server_name _;                                   ║
+║     Por:    server_name seudominio.com.br www.seudominio...  ║
+║     Salve e rode: nginx -t && systemctl reload nginx         ║
+║                                                              ║
+║   Para HTTPS gratuito (SSL):                                 ║
+║     apt install certbot python3-certbot-nginx -y             ║
+║     certbot --nginx -d seudominio.com.br                     ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║   SUPORTE — KazinhoSystems / ArrudaCorp                      ║
+╚══════════════════════════════════════════════════════════════╝
