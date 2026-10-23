@@ -1,0 +1,5 @@
+# Project-wide Flutter Web defaults, including Run/Debug without launch.json.
+# These exact loopback origins are authorized by the VPS CORS policy.
+server:
+  host: localhost
+  port: 7357
