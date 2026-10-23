@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ASTHA - VPS",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "toolArgs": [
+        "--web-hostname=localhost",
+        "--web-port=7357",
+        "--dart-define=ASTHA_API_URL=https://136.111.89.192"
+      ]
+    },
+    {
+      "name": "ASTHA - Web Chrome (VPS)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "flutterMode": "debug",
+      "toolArgs": [
+        "--web-hostname=localhost",
+        "--web-port=7357",
+        "--dart-define=ASTHA_API_URL=https://136.111.89.192"
+      ]
+    }
+  ]
+}
