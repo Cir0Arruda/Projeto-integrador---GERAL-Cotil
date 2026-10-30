@@ -104,14 +104,29 @@ Este repositório reúne os componentes e os materiais acadêmicos do projeto. O
 
 | Diretório | Conteúdo |
 | --- | --- |
-| [MOBILE/ASTHA_MOBILE](MOBILE/ASTHA_MOBILE/) | Cliente Flutter: fontes, recursos, testes e configuração Android/Web. |
-| [DESKTOP APP](<DESKTOP APP/>) | Fontes e materiais históricos do Desktop e backend, organizados por versão. |
-| [SITE ASTHA](<SITE ASTHA/>) | Snapshot dos arquivos do site importado. |
-| [DATABASE (BANCO DE DADOS)](<DATABASE (BANCO DE DADOS)/>) | Documentação do esquema de dados. |
-| [DOCUMENTAÇÃO](<DOCUMENTAÇÃO/>) | Planejamento, estudos, identidade visual e mockups. |
+| [apps/desktop](apps/desktop/) | Cliente Electron atual: runtime isolado, ponte IPC, testes e instalador Windows. |
+| [apps/mobile](apps/mobile/) | Cliente Flutter: fontes, recursos, testes e configuração Android/Web. |
+| [DESKTOP APP](<archive/desktop/>) | Fontes e materiais históricos do Desktop e backend, organizados por versão. |
+| [SITE ASTHA](<archive/site/>) | Snapshot dos arquivos do site importado. |
+| [DATABASE (BANCO DE DADOS)](<database/>) | Documentação do esquema de dados. |
+| [DOCUMENTAÇÃO](<docs/academic/>) | Planejamento, estudos, identidade visual e mockups. |
 | [IMPORT_SECURITY_REVIEW.md](IMPORT_SECURITY_REVIEW.md) | Registro da revisão da importação, configuração e limites do snapshot inicial. |
 
 A descrição funcional deste README segue o TCC. Ao executar um componente, consulte os arquivos e as instruções da versão correspondente: o conteúdo histórico de Web/Desktop e o cliente Flutter têm ciclos próprios de atualização.
+
+## Executar o cliente Desktop
+
+O cliente Desktop usa o Web app HTTPS como base, com um único runtime Electron e sem API ou MySQL no instalador.
+
+```sh
+cd apps/desktop
+npm ci
+npm start
+npm test
+npm run build
+```
+
+Veja [execução, segurança e empacotamento do Desktop](apps/desktop/README.md) e [a estrutura do repositório](docs/STRUCTURE.md).
 
 ## Executar o cliente Flutter
 
@@ -119,7 +134,7 @@ A descrição funcional deste README segue o TCC. Ao executar um componente, con
 
 ```sh
 git clone https://github.com/Cir0Arruda/Projeto-integrador---GERAL-Cotil.git
-cd Projeto-integrador---GERAL-Cotil/MOBILE/ASTHA_MOBILE
+cd Projeto-integrador---GERAL-Cotil/apps/mobile
 flutter pub get
 flutter run -d chrome --web-hostname=localhost --web-port=7357
 ```
@@ -139,7 +154,7 @@ flutter analyze
 flutter test
 ```
 
-Consulte o [README do Mobile](MOBILE/ASTHA_MOBILE/README.md) para os detalhes de conexão, modelos 3D, QR e diferenças entre ambientes. Os componentes Web/Desktop devem ser executados conforme a configuração da versão em suas pastas.
+Consulte o [README do Mobile](apps/mobile/README.md) para os detalhes de conexão, modelos 3D, QR e diferenças entre ambientes. Os componentes Web/Desktop devem ser executados conforme a configuração da versão em suas pastas.
 
 ## Documentação e alcance da avaliação
 

@@ -1,0 +1,22 @@
+{
+  "name": "astha-raven-electron",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ASTHA RAVEN — cliente Desktop Electron",
+  "main": "src/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node launch.cjs --profile=vps",
+    "start:local": "node launch.cjs --profile=local",
+    "start:principal": "node launch.cjs --profile=vps",
+    "start:backup": "node launch.cjs --profile=backup",
+    "build": "electron-builder --config electron-builder.cjs --win",
+    "build:dir": "electron-builder --config electron-builder.cjs --win --dir",
+    "test": "node --test test/*.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.9.2",
+    "electron-builder": "26.15.3"
+  },
+  "author": "Ciro Eduardo Arruda Costa e Gustavo Breder Leal"
+}
