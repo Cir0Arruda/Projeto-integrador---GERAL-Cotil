@@ -64,3 +64,8 @@ A integração usa a API publicada; requer conectividade. A alteração não imp
 ## Recuperação no ambiente completo
 
 Somente no checkout que contém as fontes Web/API e o perfil protegido: execute `npm run start:backup` pela raiz. O processo local é filho deste cliente, tem tempo máximo para iniciar e é encerrado junto ao aplicativo. Esse fluxo não pertence ao pacote Desktop publicado.
+
+## Identidade do instalador
+
+O instalador e o desinstalador usam os recursos de installer/, com superfícies claras, tipografia Segoe UI, preto e azul ASTHA e textos em português do Brasil. Os bitmaps são recursos vetoriais/geométricos exportados pelo script generate-brand.ps1; não usam serviços externos. O include brand.nsh personaliza o Modern UI sem substituir as rotinas de instalação. Para regenerar os recursos, execute ./installer/generate-brand.ps1 no PowerShell antes do build.
+

@@ -13,5 +13,10 @@ module.exports = {
   ],
   win: { target: 'nsis', icon: 'src/renderer/images/app_icon.png' },
   nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true,
+    include: 'installer/brand.nsh',
+    installerHeader: 'installer/header.bmp',
+    installerSidebar: 'installer/installer-sidebar.bmp',
+    uninstallerSidebar: 'installer/uninstaller-sidebar.bmp',
+    installerLanguages: ['pt_BR'], language: '1046',
     deleteAppDataOnUninstall: false, createDesktopShortcut: true }
 };
