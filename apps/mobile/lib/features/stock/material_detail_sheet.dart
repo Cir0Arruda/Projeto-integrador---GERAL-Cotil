@@ -168,12 +168,7 @@ class _MaterialDetailSheetState extends State<MaterialDetailSheet> {
           FilledButton(
             onPressed: () {
               Navigator.pop(dialogContext);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      MovementScreen(entry: false, initialCode: _item.code),
-                ),
-              );
+              _move(false);
             },
             child: const Text('Retirar item'),
           ),

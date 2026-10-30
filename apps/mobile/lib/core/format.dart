@@ -58,5 +58,6 @@ String formatDate(DateTime? value) =>
 double? parseDecimal(String input) {
   final normalized = input.trim().replaceAll(',', '.');
   if (normalized.isEmpty) return null;
-  return double.tryParse(normalized);
+  final value = double.tryParse(normalized);
+  return value != null && value.isFinite ? value : null;
 }

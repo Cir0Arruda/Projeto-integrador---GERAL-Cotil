@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format.dart';
+import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../models/wms_models.dart';
 import '../../repositories/wms_repository.dart';
@@ -35,9 +36,7 @@ class _ReportsPageState extends State<ReportsPage> {
     final repository = context.read<WmsRepository>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Relatórios de Movimentação'),
-      ),
+      appBar: AppBar(title: const Text('Relatórios de Movimentação')),
       body: Column(
         children: [
           // Botoõezinhos segmentados no topo pra filtrar Todas / Entradas / Saídas :3
@@ -50,7 +49,8 @@ class _ReportsPageState extends State<ReportsPage> {
                 ButtonSegment(value: false, label: Text('Saídas')),
               ],
               selected: {_entries},
-              onSelectionChanged: (value) => setState(() => _entries = value.first),
+              onSelectionChanged: (value) =>
+                  setState(() => _entries = value.first),
             ),
           ),
           // Caixinha de texto pra pesquisar por texto em tempo real (o^▽^o)
@@ -62,7 +62,8 @@ class _ReportsPageState extends State<ReportsPage> {
                 hintText: 'Buscar por material, código ou responsável...',
                 isDense: true,
               ),
-              onChanged: (val) => setState(() => _search = val.toLowerCase().trim()),
+              onChanged: (val) =>
+                  setState(() => _search = val.toLowerCase().trim()),
             ),
           ),
 
@@ -73,6 +74,9 @@ class _ReportsPageState extends State<ReportsPage> {
           // ==================================================================
           Expanded(
             child: AsyncView<List<MovementRecord>>(
+              revision: context.select<ApiClient, int>(
+                (api) => api.dataRevision,
+              ),
               key: ValueKey(_entries),
               // Faz a requisição assíncrona HTTP pra API no backend (づ｡◕‿‿◕｡)づ
               load: () => repository.movements(entries: _entries),
@@ -83,11 +87,15 @@ class _ReportsPageState extends State<ReportsPage> {
                         final desc = r.materialDescription.toLowerCase();
                         final code = r.materialCode.toLowerCase();
                         final resp = (r.responsible ?? '').toLowerCase();
-                        return desc.contains(_search) || code.contains(_search) || resp.contains(_search);
+                        return desc.contains(_search) ||
+                            code.contains(_search) ||
+                            resp.contains(_search);
                       }).toList();
 
                 if (filtered.isEmpty) {
-                  return const EmptyState(message: 'Nenhuma movimentação encontrada.');
+                  return const EmptyState(
+                    message: 'Nenhuma movimentação encontrada.',
+                  );
                 }
 
                 final entriesCount = records.where((r) => r.isEntry).length;
@@ -110,9 +118,21 @@ class _ReportsPageState extends State<ReportsPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Total Registros', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                                const Text(
+                                  'Total Registros',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
-                                Text('${records.length}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                                Text(
+                                  '${records.length}',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -129,9 +149,22 @@ class _ReportsPageState extends State<ReportsPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Entradas', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                                const Text(
+                                  'Entradas',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
-                                Text('$entriesCount', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.brand)),
+                                Text(
+                                  '$entriesCount',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.brand,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -148,9 +181,22 @@ class _ReportsPageState extends State<ReportsPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Saídas', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                                const Text(
+                                  'Saídas',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
-                                Text('$exitsCount', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.danger)),
+                                Text(
+                                  '$exitsCount',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.danger,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -158,10 +204,12 @@ class _ReportsPageState extends State<ReportsPage> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ...filtered.map((record) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _MovementTile(record: record),
-                        )),
+                    ...filtered.map(
+                      (record) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _MovementTile(record: record),
+                      ),
+                    ),
                   ],
                 );
               },
@@ -191,20 +239,36 @@ class _MovementTile extends StatelessWidget {
             children: [
               Text(
                 record.isEntry ? 'Entrada de estoque' : 'Saída de estoque',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 12),
-              InfoRow(label: 'Material', value: '${record.materialDescription} (${record.materialCode})'),
-              InfoRow(label: 'Quantidade', value: '${record.isEntry ? '+' : '-'}${formatQuantity(record.quantity)}'),
+              InfoRow(
+                label: 'Material',
+                value: '${record.materialDescription} (${record.materialCode})',
+              ),
+              InfoRow(
+                label: 'Quantidade',
+                value:
+                    '${record.isEntry ? '+' : '-'}${formatQuantity(record.quantity)}',
+              ),
               if (record.responsible != null && record.responsible!.isNotEmpty)
                 InfoRow(label: 'Responsável', value: record.responsible),
               if (record.nfNumber != null && record.nfNumber!.isNotEmpty)
-                InfoRow(label: 'Nota Fiscal / Documento', value: record.nfNumber),
+                InfoRow(
+                  label: 'Nota Fiscal / Documento',
+                  value: record.nfNumber,
+                ),
               if (record.reason != null && record.reason!.isNotEmpty)
                 InfoRow(label: 'Motivo', value: record.reason),
               if (record.notes != null && record.notes!.isNotEmpty)
                 InfoRow(label: 'Observações', value: record.notes),
-              InfoRow(label: 'Data e hora', value: formatDateTime(record.createdAt)),
+              InfoRow(
+                label: 'Data e hora',
+                value: formatDateTime(record.createdAt),
+              ),
             ],
           ),
         ),
@@ -226,13 +290,25 @@ class _MovementTile extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.12),
-          child: Icon(record.isEntry ? Icons.south_west : Icons.north_east, color: color, size: 20),
+          child: Icon(
+            record.isEntry ? Icons.south_west : Icons.north_east,
+            color: color,
+            size: 20,
+          ),
         ),
-        title: Text(record.materialDescription, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          record.materialDescription,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         subtitle: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: Text(
           '${record.isEntry ? '+' : '-'}${formatQuantity(record.quantity)}',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
         ),
         onTap: () => _showDetails(context),
       ),

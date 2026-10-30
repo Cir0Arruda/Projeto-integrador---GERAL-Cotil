@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format.dart';
+import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../models/wms_models.dart';
 import '../../repositories/wms_repository.dart';
@@ -58,7 +59,7 @@ class _StockPageState extends State<StockPage> {
   // Quando fecha com sucesso, ela recarrega a lista chamando a API de novo!
   Future<void> _openCreateDialog() async {
     final created = await MaterialFormDialog.show(context);
-    if (created == true) _refresh();
+    if (created == true && mounted) _refresh();
   }
 
   @override
@@ -78,9 +79,11 @@ class _StockPageState extends State<StockPage> {
               children: [
                 Expanded(
                   child: TextField(
-                    onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+                    onChanged: (value) =>
+                        setState(() => _query = value.trim().toLowerCase()),
                     decoration: const InputDecoration(
-                      hintText: 'Buscar por código, descrição, marca ou máquina',
+                      hintText:
+                          'Buscar por código, descrição, marca ou máquina',
                       prefixIcon: Icon(Icons.search),
                       isDense: true,
                     ),
@@ -103,16 +106,21 @@ class _StockPageState extends State<StockPage> {
           // ==================================================================
           Expanded(
             child: AsyncView<List<MaterialItem>>(
+              revision: context.select<ApiClient, int>(
+                (api) => api.dataRevision,
+              ),
               key: ValueKey(_reloadKey),
               // Faz a chamada assíncrona HTTP pra API no servidor buscar a lista :3
               load: () => repository.materials(warehouseId: warehouseId),
               builder: (context, items) {
                 // Filtra os itens se o usuário digitou algo na caixinha de busca
                 final visible = items.where(_matches).toList();
-                
+
                 // Se o servidor respondeu vazio ou a busca não achou nada, avisa com carinho (;-;)
                 if (visible.isEmpty) {
-                  return const EmptyState(message: 'Nenhum material encontrado.');
+                  return const EmptyState(
+                    message: 'Nenhum material encontrado.',
+                  );
                 }
 
                 // Renderiza a lista de objetos retornados da API na tela com rolagem suave (｡•̀ᴗ-)✧
@@ -121,10 +129,8 @@ class _StockPageState extends State<StockPage> {
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
                   itemCount: visible.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) => _MaterialTile(
-                    item: visible[index],
-                    onChanged: _refresh,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _MaterialTile(item: visible[index], onChanged: _refresh),
                 );
               },
             ),
@@ -137,7 +143,10 @@ class _StockPageState extends State<StockPage> {
         backgroundColor: AppColors.brand,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
-        label: const Text('Novo Material', style: TextStyle(fontWeight: FontWeight.w700)),
+        label: const Text(
+          'Novo Material',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
       ),
     );
   }
@@ -161,9 +170,17 @@ class _MaterialTile extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         // Miniatura da foto do material cadastrada no sistema
         leading: MaterialThumb(item: item),
-        title: Text(item.description, maxLines: 2, overflow: TextOverflow.ellipsis),
+        title: Text(
+          item.description,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
         subtitle: Text(
-          [item.code, item.brand, item.location].whereType<String>().join(' · '),
+          [
+            item.code,
+            item.brand,
+            item.location,
+          ].whereType<String>().join(' · '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -174,9 +191,16 @@ class _MaterialTile extends StatelessWidget {
           children: [
             Text(
               formatQuantity(item.quantity),
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
-            Text(item.unit, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            Text(
+              item.unit,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            ),
           ],
         ),
         // Clicar no cartãozinho abre os detalhes completos do item (｡•̀ᴗ-)✧

@@ -147,6 +147,7 @@ class _MovementFormState extends State<MovementForm> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     if (!_formKey.currentState!.validate()) return;
     final material = _material;
     if (material == null) {
@@ -290,6 +291,10 @@ class _MovementFormState extends State<MovementForm> {
               final number = parseDecimal(value ?? '');
               if (number == null || number <= 0) {
                 return 'Informe uma quantidade maior que zero';
+              }
+              if (number > 1e9 ||
+                  (number * 1000 - (number * 1000).round()).abs() > 0.000001) {
+                return 'Use até 3 casas decimais e no máximo 1 bilhão';
               }
               return null;
             },

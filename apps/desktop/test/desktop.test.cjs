@@ -13,10 +13,10 @@ function harness({ local = false, packaged = false, lock = true, response = 0 } 
     constructor(options) {
       super(); this.options = options; this.loads = [];
       this.webContents = new EventEmitter(); this.webContents.mainFrame = { url: '' };
-      this.webContents.session = {
+      this.webContents.session = Object.assign(new EventEmitter(), {
         setPermissionRequestHandler: fn => { this.permission = fn; },
         setPermissionCheckHandler: fn => { this.permissionCheck = fn; }
-      };
+      });
       this.webContents.setWindowOpenHandler = fn => { this.open = fn; }; windows.push(this);
     }
     isDestroyed() { return false; } isMinimized() { return false; } restore() {} focus() { this.focused = true; }
@@ -100,3 +100,27 @@ test('installer contains a client allowlist, ASAR and no backend dependency', ()
     ['src/main/security/client-deployment.js','src/renderer/images/app_icon.png'].includes(x)));
   assert.equal(config.nsis.perMachine, false);
 });
+
+test('3D fullscreen is allowed only for the trusted main frame, never automatic or device permissions', () => {
+  const h = harness(), win = h.windows[0], details = {isMainFrame:true,requestingUrl:'https://astha.example.invalid/app/eam.html'};
+  let allowed;
+  win.permission(win.webContents,'fullscreen',x=>{allowed=x;},details); assert.equal(allowed,true);
+  assert.equal(win.permissionCheck(win.webContents,'fullscreen','https://astha.example.invalid',details),true);
+  for(const [wc,permission,info] of [[{},'fullscreen',details],[win.webContents,'media',details],
+    [win.webContents,'automatic-fullscreen',details],[win.webContents,'fullscreen',{...details,isMainFrame:false}],
+    [win.webContents,'fullscreen',{...details,requestingUrl:'https://foreign.invalid'}]]) {
+    win.permission(wc,permission,x=>{allowed=x;},info);assert.equal(allowed,false);
+  }
+});
+test('authorized file downloads offer a named save dialog and foreign downloads are rejected',()=>{
+  const h=harness(),session=h.windows[0].webContents.session;
+  let canceled=false,options;
+  const item={getURL:()=> 'blob:https://astha.example.invalid/uuid',getFilename:()=> '../../private:report.csv',
+    cancel:()=>{canceled=true;},setSaveDialogOptions:value=>{options=value;}};
+  session.emit('will-download',{},item);
+  assert.equal(canceled,false);assert.equal(require('node:path').basename(options.defaultPath),'private-report.csv');
+  assert.equal(options.title,'Salvar arquivo do ASTHA');
+  session.emit('will-download',{}, {...item,getURL:()=> 'https://foreign.invalid/file'});
+  assert.equal(canceled,true);
+});
+

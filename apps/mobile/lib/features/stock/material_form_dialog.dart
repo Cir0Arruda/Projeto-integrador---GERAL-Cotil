@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
+import '../../core/format.dart';
 import '../../widgets/dialogs.dart';
 import '../../models/wms_models.dart';
 import '../../repositories/wms_repository.dart';
@@ -109,7 +110,34 @@ class _MaterialFormDialogState extends State<MaterialFormDialog> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
     if (!_formKey.currentState!.validate()) return;
+    final numbers = <String, double>{};
+    for (final field in [
+      ('quantity', 'Quantidade', _qtyCtrl, 3),
+      ('min_qty', 'Estoque mínimo', _minQtyCtrl, 3),
+      ('max_qty', 'Estoque máximo', _maxQtyCtrl, 3),
+      ('unit_price', 'Preço', _priceCtrl, 2),
+    ]) {
+      final text = field.$3.text.trim();
+      final value = text.isEmpty ? 0.0 : parseDecimal(text);
+      final scale = field.$4 == 2 ? 100 : 1000;
+      if (value == null ||
+          value < 0 ||
+          value > 1e9 ||
+          (value * scale - (value * scale).round()).abs() > 0.000001) {
+        setState(
+          () => _error =
+              '${field.$2}: informe um número de 0 a 1 bilhão, com até ${field.$4} casas decimais. Use vírgula ou ponto, sem separador de milhar.',
+        );
+        return;
+      }
+      numbers[field.$1] = value;
+    }
+    if (_codeCtrl.text.trim().length > 20) {
+      setState(() => _error = 'O código deve ter até 20 caracteres.');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -128,10 +156,7 @@ class _MaterialFormDialogState extends State<MaterialFormDialog> {
       'location': _locationCtrl.text.trim().isEmpty
           ? null
           : _locationCtrl.text.trim(),
-      'quantity': double.tryParse(_qtyCtrl.text.trim()) ?? 0,
-      'min_qty': double.tryParse(_minQtyCtrl.text.trim()) ?? 0,
-      'max_qty': double.tryParse(_maxQtyCtrl.text.trim()) ?? 0,
-      'unit_price': double.tryParse(_priceCtrl.text.trim()) ?? 0,
+      ...numbers,
       'unit': _unitCtrl.text.trim().isEmpty ? 'UN' : _unitCtrl.text.trim(),
       'origin_country': _originCtrl.text.trim().isEmpty
           ? null
@@ -161,7 +186,7 @@ class _MaterialFormDialogState extends State<MaterialFormDialog> {
     } on QueuedOperationException catch (e) {
       if (mounted) {
         showToast(context, e.message);
-        Navigator.of(context).pop(true);
+        Navigator.of(context).pop(false);
       }
     } catch (e) {
       if (mounted) {

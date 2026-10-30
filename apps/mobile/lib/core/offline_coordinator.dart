@@ -27,6 +27,15 @@ class OfflineCoordinator extends ChangeNotifier {
   DateTime? cacheTime;
   final Map<String, DateTime> _cachedReads = {};
   String? notice;
+  int _readGeneration = 0;
+  Future<void> invalidateReads() async {
+    _readGeneration++;
+    await store.clearCache();
+    _cachedReads.clear();
+    usingCache = false;
+    cacheTime = null;
+  }
+
   List<Map<String, dynamic>> pending = [];
   bool supports(String method, String path) =>
       (method == 'POST' &&
@@ -67,14 +76,20 @@ class OfflineCoordinator extends ChangeNotifier {
       throw const ApiException('Entre novamente para continuar.', status: 401);
     }
     if (method == 'GET') {
+      final generation = _readGeneration;
       final readId = await store.cacheId(path, query);
       try {
         final data = await remote(method, path, query: query);
         _cachedReads.remove(readId);
         usingCache = _cachedReads.isNotEmpty;
-        if (cacheable(path)) {
+        if (cacheable(path) && generation == _readGeneration && !closed) {
           try {
-            await store.cache(path, query, data);
+            await store.cache(
+              path,
+              query,
+              data,
+              isCurrent: () => generation == _readGeneration && !closed,
+            );
           } catch (_) {
             notice = 'Não foi possível atualizar a cópia offline.';
           }
@@ -153,8 +168,7 @@ class OfflineCoordinator extends ChangeNotifier {
         );
       }
       await store.mark(op['id'], 'confirmed');
-      notice =
-          'Alteração confirmada. Atualize a consulta para ver os dados atuais.';
+      notice = 'Alteração confirmada pelo servidor.';
       return answer['result'];
     } on ApiException catch (e) {
       if (e.status == 0 ||

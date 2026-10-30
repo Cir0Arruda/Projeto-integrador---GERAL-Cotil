@@ -127,12 +127,14 @@ class OfflineStore {
   Future<void> cache(
     String path,
     Map<String, String>? query,
-    dynamic value,
-  ) async {
+    dynamic value, {
+    bool Function()? isCurrent,
+  }) async {
     final record = {'path': path, 'query': query, 'value': value};
     if (utf8.encode(jsonEncode(record)).length > 2 * 1024 * 1024) return;
     final id = await cacheId(path, query), envelope = await _seal(record, id);
     await db.transaction((txn) async {
+      if (isCurrent != null && !isCurrent()) return;
       await txn.insert('cache', {
         'scope': scope,
         'id': id,
@@ -208,6 +210,10 @@ class OfflineStore {
       }
     }
     return null;
+  }
+
+  Future<void> clearCache() async {
+    await db.delete('cache', where: 'scope=?', whereArgs: [scope]);
   }
 
   Future<void> enqueue(Map<String, dynamic> operation) async {

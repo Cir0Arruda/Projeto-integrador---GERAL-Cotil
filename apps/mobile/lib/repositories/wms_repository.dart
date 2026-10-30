@@ -86,19 +86,24 @@ class WmsRepository {
     String code,
     Map<String, dynamic> payload,
   ) async {
-    final data = await _api.put('/api/materials/$code', payload);
+    final data = await _api.put(
+      '/api/materials/${Uri.encodeComponent(code)}',
+      payload,
+    );
     return MaterialItem.fromJson(data as Map<String, dynamic>);
   }
 
   // API: DELETE /api/materials/:code
   // Apaga um material do estoque quando a gente não vai mais usar ele (;-;)
   Future<void> deleteMaterial(String code) =>
-      _api.delete('/api/materials/$code');
+      _api.delete('/api/materials/${Uri.encodeComponent(code)}');
 
   // API: GET /api/materials/:code/files
   // Busca anexos e manuais em PDF relacionados a um item específico (｡•̀ᴗ-)✧
   Future<List<MaterialFile>> materialFiles(String code) async {
-    final data = await _api.get('/api/materials/$code/files');
+    final data = await _api.get(
+      '/api/materials/${Uri.encodeComponent(code)}/files',
+    );
     return (data as List)
         .cast<Map<String, dynamic>>()
         .map(MaterialFile.fromJson)

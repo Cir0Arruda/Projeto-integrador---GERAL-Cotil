@@ -5,6 +5,8 @@ const { desktopServer } = require('./security/client-deployment');
 const store = require('./dados-store');
 const { registerDesktopIpc } = require('./desktop-ipc');
 const { applyWindowSecurity } = require('./window-security');
+const { sameOrigin } = require('./window-security');
+const downloadSessions = new WeakSet();
 function startDesktop({ app, BrowserWindow, dialog, shell, ipcMain }, options = {}) {
   const env = options.env || process.env, args = options.args || process.argv.slice(1);
   const spawnApi = options.fork || fork;
@@ -54,6 +56,16 @@ function startDesktop({ app, BrowserWindow, dialog, shell, ipcMain }, options = 
     });
     win.setMenuBarVisibility(false);
     applyWindowSecurity(win, deployment, { shell, dialog });
+    if (!downloadSessions.has(win.webContents.session)) {
+      downloadSessions.add(win.webContents.session);
+      win.webContents.session.on('will-download', (_event, item) => {
+      if (!sameOrigin(item.getURL(), deployment.url)) { item.cancel(); return; }
+      const filename = path.basename(String(item.getFilename()).replaceAll('\\', '/'))
+        .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 180);
+      item.setSaveDialogOptions({ title: 'Salvar arquivo do ASTHA',
+        defaultPath: path.join(app.getPath('downloads'), filename && filename !== '.' && filename !== '..' ? filename : 'arquivo') });
+      });
+    }
     win.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
       if (mainFrame && code !== -3) void connectionFailed();
     });

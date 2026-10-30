@@ -19,8 +19,10 @@ class AsyncView<T> extends StatefulWidget {
     required this.load,
     required this.builder,
     this.shrinkWrap = false,
+    this.revision = 0,
   });
   final bool shrinkWrap;
+  final int revision;
 
   // A função que chama a API (ex: () => repository.materials()) (o^▽^o)
   final Future<T> Function() load;
@@ -34,6 +36,12 @@ class AsyncView<T> extends StatefulWidget {
 class _AsyncViewState<T> extends State<AsyncView<T>> {
   // Guarda a promessa (Future) da requisição atual :3
   late Future<T> _future = widget.load();
+
+  @override
+  void didUpdateWidget(covariant AsyncView<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) _future = widget.load();
+  }
 
   // Funçãozinha mágica que chama a API de novo pra atualizar os dados (TwT)
   Future<void> _reload() async {

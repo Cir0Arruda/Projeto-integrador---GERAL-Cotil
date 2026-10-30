@@ -39,7 +39,8 @@ A distribuição carrega o Web app remoto. As cópias Web/API geradas no ambient
 
 - Sandbox ativo; Node.js desabilitado nas páginas; contextIsolation e webSecurity ativos.
 - Navegação e redirecionamentos limitados à origem configurada, incluindo frames.
-- Permissões negadas por padrão; webviews bloqueadas.
+- Permissões negadas por padrão; tela cheia é permitida apenas ao frame principal da origem configurada. Webviews bloqueadas.
+- Downloads da origem configurada, incluindo blobs, abrem o diálogo nativo de salvamento com nome sanitizado. Downloads de outras origens são recusados.
 - Links externos aceitam somente HTTPS sem credenciais e exigem confirmação nativa.
 - IPC limitado a preferências e informação pública de runtime. Cada chamada valida janela, frame principal e origem.
 - Preferências gravadas atomicamente em `userData`; não são armazenamento de estoque, senha ou sessão.

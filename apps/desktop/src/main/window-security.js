@@ -5,8 +5,14 @@ function sameOrigin(value, origin) {
 }
 function applyWindowSecurity(win, deployment, { shell, dialog }) {
   const contents = win.webContents;
-  contents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
-  contents.session.setPermissionCheckHandler(() => false);
+  const canFullscreen = (wc, permission, details) => wc === contents &&
+    permission === 'fullscreen' && details?.isMainFrame === true &&
+    sameOrigin(details.requestingUrl, deployment.url);
+  contents.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+    callback(canFullscreen(wc, permission, details));
+  });
+  contents.session.setPermissionCheckHandler((wc, permission, origin, details) =>
+    sameOrigin(origin, deployment.url) && canFullscreen(wc, permission, details));
   const guard = (event, target) => { if (!sameOrigin(event.url ?? target, deployment.url)) event.preventDefault(); };
   for (const name of ['will-navigate', 'will-redirect', 'will-frame-navigate']) contents.on(name, guard);
   contents.on('will-attach-webview', event => event.preventDefault());

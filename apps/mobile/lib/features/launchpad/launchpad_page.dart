@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format.dart';
+import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../models/eam_models.dart';
 import '../../models/wms_models.dart';
@@ -68,7 +69,9 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
       eamRepo.assets(),
       eamRepo.workOrders(),
       if (warehouseId != null)
-        wmsRepo.stockInsights(warehouseId).catchError((_) => const StockInsights())
+        wmsRepo
+            .stockInsights(warehouseId)
+            .catchError((_) => const StockInsights())
       else
         Future.value(const StockInsights()),
     ]);
@@ -95,6 +98,7 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
     return KeyedSubtree(
       key: ValueKey('$_reloadKey-${warehouseCtrl.selectedId}'),
       child: AsyncView<LaunchpadData>(
+        revision: context.select<ApiClient, int>((api) => api.dataRevision),
         load: () => _loadData(context),
         builder: (context, data) {
           return RefreshIndicator(
@@ -140,7 +144,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.brandLight,
                     borderRadius: BorderRadius.circular(6),
@@ -173,9 +180,9 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
         Text(
           'Painel de operação',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -210,7 +217,7 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                             color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 4,
                             offset: const Offset(0, 1),
-                          )
+                          ),
                         ]
                       : null,
                 ),
@@ -221,15 +228,21 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                       Icon(
                         Icons.dashboard_outlined,
                         size: 16,
-                        color: _viewIndex == 0 ? AppColors.textPrimary : AppColors.textMuted,
+                        color: _viewIndex == 0
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         'Visão geral',
                         style: TextStyle(
                           fontSize: 13,
-                          fontWeight: _viewIndex == 0 ? FontWeight.w700 : FontWeight.w500,
-                          color: _viewIndex == 0 ? AppColors.textPrimary : AppColors.textMuted,
+                          fontWeight: _viewIndex == 0
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: _viewIndex == 0
+                              ? AppColors.textPrimary
+                              : AppColors.textMuted,
                         ),
                       ),
                     ],
@@ -252,7 +265,7 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                             color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 4,
                             offset: const Offset(0, 1),
-                          )
+                          ),
                         ]
                       : null,
                 ),
@@ -263,15 +276,21 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                       Icon(
                         Icons.insights_outlined,
                         size: 16,
-                        color: _viewIndex == 1 ? AppColors.textPrimary : AppColors.textMuted,
+                        color: _viewIndex == 1
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         'Visão dos estoques',
                         style: TextStyle(
                           fontSize: 13,
-                          fontWeight: _viewIndex == 1 ? FontWeight.w700 : FontWeight.w500,
-                          color: _viewIndex == 1 ? AppColors.textPrimary : AppColors.textMuted,
+                          fontWeight: _viewIndex == 1
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: _viewIndex == 1
+                              ? AppColors.textPrimary
+                              : AppColors.textMuted,
                         ),
                       ),
                     ],
@@ -287,7 +306,9 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
 
   Widget _buildOverviewKpis(LaunchpadData data) {
     final lowStock = data.materials.where((m) => m.quantity <= m.minQty).length;
-    final openOrders = data.orders.where((o) => o.status != 'completed' && o.status != 'cancelled').length;
+    final openOrders = data.orders
+        .where((o) => o.status != 'completed' && o.status != 'cancelled')
+        .length;
 
     return GridView.count(
       crossAxisCount: 2,
@@ -369,7 +390,9 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: color == AppColors.danger ? AppColors.danger : AppColors.textPrimary,
+              color: color == AppColors.danger
+                  ? AppColors.danger
+                  : AppColors.textPrimary,
             ),
           ),
           Text(
@@ -382,7 +405,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
   }
 
   Widget _buildAttentionSection(List<MaterialItem> items) {
-    final lowStockItems = items.where((m) => m.quantity <= m.minQty).take(5).toList();
+    final lowStockItems = items
+        .where((m) => m.quantity <= m.minQty)
+        .take(5)
+        .toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -399,7 +425,11 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
             children: [
               const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, size: 18, color: AppColors.danger),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 18,
+                    color: AppColors.danger,
+                  ),
                   SizedBox(width: 8),
                   Text(
                     'Estoque que precisa de atenção',
@@ -414,7 +444,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                   minimumSize: const Size(50, 30),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('Ver estoque →', style: TextStyle(fontSize: 12)),
+                child: const Text(
+                  'Ver estoque →',
+                  style: TextStyle(fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -445,19 +478,28 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                         children: [
                           Text(
                             item.description,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             item.code,
-                            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
                           ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.danger.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
@@ -501,7 +543,11 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
             children: [
               const Row(
                 children: [
-                  Icon(Icons.build_circle_outlined, size: 18, color: AppColors.brand),
+                  Icon(
+                    Icons.build_circle_outlined,
+                    size: 18,
+                    color: AppColors.brand,
+                  ),
                   SizedBox(width: 8),
                   Text(
                     'Ordens em andamento',
@@ -516,7 +562,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                   minimumSize: const Size(50, 30),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('Ver ordens →', style: TextStyle(fontSize: 12)),
+                child: const Text(
+                  'Ver ordens →',
+                  style: TextStyle(fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -547,20 +596,28 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                         children: [
                           Text(
                             order.title,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             order.workOrderNumber ?? '#${order.id}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
                           ),
                         ],
                       ),
                     ),
                     StatusPill(
                       label: order.status,
-                      color: order.status == 'in_progress' ? AppColors.brand : AppColors.warning,
+                      color: order.status == 'in_progress'
+                          ? AppColors.brand
+                          : AppColors.warning,
                     ),
                   ],
                 );
@@ -602,7 +659,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                   minimumSize: const Size(50, 30),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('Relatórios →', style: TextStyle(fontSize: 12)),
+                child: const Text(
+                  'Relatórios →',
+                  style: TextStyle(fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -648,14 +708,22 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            m.materialDescription.isNotEmpty ? m.materialDescription : m.materialCode,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            m.materialDescription.isNotEmpty
+                                ? m.materialDescription
+                                : m.materialCode,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             '${m.responsible ?? 'Sistema'} · ${formatDateTime(m.createdAt)}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
                           ),
                         ],
                       ),
@@ -758,13 +826,19 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
                     subtitle,
-                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textMuted,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -777,7 +851,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
     );
   }
 
-  Widget _buildStockInsightsView(StockInsights? insights, WarehouseController warehouseCtrl) {
+  Widget _buildStockInsightsView(
+    StockInsights? insights,
+    WarehouseController warehouseCtrl,
+  ) {
     final stockData = insights ?? const StockInsights();
 
     return Column(
@@ -821,7 +898,9 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
               value: '${stockData.criticalCount + stockData.zeroCount}',
               subtitle: 'Reposição necessária',
               icon: Icons.warning_amber_rounded,
-              color: (stockData.criticalCount + stockData.zeroCount) > 0 ? AppColors.danger : AppColors.textMuted,
+              color: (stockData.criticalCount + stockData.zeroCount) > 0
+                  ? AppColors.danger
+                  : AppColors.textMuted,
             ),
             _buildKpiCard(
               title: 'Volume total',
@@ -854,7 +933,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                   child: Center(
                     child: Text(
                       'Nenhum item em nível crítico no armazém selecionado.',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 )
@@ -874,11 +956,17 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                             children: [
                               Text(
                                 item.description,
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               Text(
                                 '${item.code} · ${item.brand ?? item.sector ?? 'Material'}',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textMuted,
+                                ),
                               ),
                             ],
                           ),
@@ -896,7 +984,10 @@ class _LaunchpadPageState extends State<LaunchpadPage> {
                             ),
                             Text(
                               'mín. ${formatQuantity(item.minQty)}',
-                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textMuted,
+                              ),
                             ),
                           ],
                         ),

@@ -9,6 +9,8 @@ export 'api_exception.dart';
 
 /// Identity and writes are always validated by the API, without SQL fallback.
 class ApiClient extends ChangeNotifier {
+  int dataRevision = 0;
+  bool _closed = false;
   OfflineCoordinator? offline;
   DateTime? offlineValidUntil;
   void attachOffline(OfflineCoordinator value, DateTime until) {
@@ -164,7 +166,7 @@ class ApiClient extends ChangeNotifier {
         'Não foi possível conectar à API. Confira o registro antes de repetir uma alteração.',
       );
     }
-    if (_baseUrl != uri.origin || token != currentToken) {
+    if (_closed || _baseUrl != uri.origin || token != currentToken) {
       throw const ApiException(
         'A sessão mudou durante a consulta.',
         status: 401,
@@ -182,6 +184,26 @@ class ApiClient extends ChangeNotifier {
       );
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      final confirmedSync =
+          path == '/api/sync/operations' &&
+          decoded is Map &&
+          body?['id'] != null &&
+          decoded['id'] == body?['id'] &&
+          decoded['confirmed'] == true;
+      final stockWrite =
+          method != 'GET' &&
+          (path.startsWith('/api/materials') ||
+              path.startsWith('/api/movements/'));
+      if (confirmedSync || stockWrite) {
+        // The server has committed. Cache failures must not turn it into a failed write.
+        try {
+          await offline?.invalidateReads();
+        } catch (_) {}
+        if (!_closed && token == currentToken && _baseUrl == uri.origin) {
+          dataRevision++;
+          notifyListeners();
+        }
+      }
       return decoded;
     }
     if (response.statusCode == 401 &&
@@ -206,6 +228,8 @@ class ApiClient extends ChangeNotifier {
   }
 
   void close() {
+    _closed = true;
+    token = null;
     detachOffline();
     _http.close();
     super.dispose();
