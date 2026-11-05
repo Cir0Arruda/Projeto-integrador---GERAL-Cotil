@@ -4,7 +4,7 @@ const {startSandbox}=require('./analytics-sandbox');
 const bcrypt=require('../../api/node_modules/bcryptjs');
 async function main(){
  const sandbox=await startSandbox();let server,closing=false;
- async function close(){if(closing)return;closing=true;if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await sandbox.close();console.log('AUDIT_APP_STOPPED');}
+ async function close(){if(closing)return;closing=true;if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await sandbox.close();process.stdin.pause();process.stdin.unref?.();console.log('AUDIT_APP_STOPPED');}
  try{
   const {admin,pool,db}=sandbox;
   if(!/^astha_test_[a-f0-9]+$/.test(db))throw Error('SANDBOX_REQUIRED');

@@ -48,6 +48,8 @@ O instalador atualizado foi copiado para a Área de Trabalho e a versão anterio
 
 As verificações usaram dados sintéticos e processos MySQL descartáveis. Não houve alteração no banco ou serviço da VPS, OAuth externo real, biometria física, instalação/desinstalação em máquina limpa, reescrita de histórico Git ou benchmark de placa gráfica física. As correções desta entrega são de fontes, pacote e publicação Git; o deploy Web/API na VPS é uma operação posterior.
 
+No encerramento foi ajustado o próprio harness de auditoria para pausar/liberar a entrada do terminal após fechar HTTP/MySQL. Uma nova inicialização e parada terminaram com código 0 e nenhum processo de servidor de auditoria restante. Essa correção é de infraestrutura de teste, sem alteração das funções de produção.
+
 ## Relatórios das duas rodadas
 
 - `AUDIT_2026-11-05_UI_R1.md` e `AUDIT_2026-11-05_UI_R2.md`.
