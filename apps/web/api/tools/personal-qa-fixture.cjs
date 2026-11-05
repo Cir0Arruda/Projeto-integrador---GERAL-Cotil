@@ -1,0 +1,11 @@
+'use strict';
+const crypto=require('node:crypto');
+module.exports=async function fixture(){
+ const profile=await require('../security/local-profile').load();if(profile.DB_NAME!=='astha_raven_lab')throw Error('Use somente o banco local de laboratório.');Object.assign(process.env,profile);
+ const {pool}=require('../database/connection'),tokens=require('../security/tokens');const prefix='qa_personal_'+crypto.randomBytes(5).toString('hex'),users=[],orgs=[];let server;
+ const insert=async(sql,args)=>(await pool.execute(sql,args))[0].insertId;
+ async function identity(label,mode='personal',setup=1,orgId){const org=orgId||prefix+'_'+label;if(!orgId){await insert('INSERT INTO organizations (id,name,workspace_type,setup_done) VALUES (?,?,?,?)',[org,'QA · '+label,mode,setup]);orgs.push(org);}const id=await insert("INSERT INTO users (org_id,name,email,role,is_active,email_verified,setup_done) VALUES (?,?,?,'superadmin',1,1,?)",[org,'Pessoa QA',prefix+'_'+label+'@example.invalid',setup]);const user={id,org_id:org,name:'Pessoa QA',surname:'ASTHA',role:'superadmin',setup_done:!!setup,workspace_type:mode};const token=tokens.signToken(user);await insert('INSERT INTO sessions (user_id,token,expires_at) VALUES (?,?,?)',[id,token,tokens.expiresAt(token)]);users.push(user);return {...user,token};}
+ async function start(){server=require('node:http').createServer();server.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const origin='http://127.0.0.1:'+server.address().port;process.env.ALLOWED_ORIGINS=origin;process.env.PORT=String(server.address().port);const {app}=require('../server');server.on('request',app);return {origin,app};}
+ async function close(){if(server)await new Promise(r=>server.close(r));for(const u of users){await pool.execute('DELETE FROM sessions WHERE user_id=?',[u.id]);await pool.execute('UPDATE users SET is_active=0 WHERE id=? AND org_id=?',[u.id,u.org_id]);}for(const org of orgs)await pool.execute("UPDATE warehouse_layout SET blueprint_data=JSON_SET(blueprint_data,'$.archived',true) WHERE org_id=? AND JSON_VALID(blueprint_data) AND JSON_UNQUOTE(JSON_EXTRACT(blueprint_data,'$.schema'))='astha-personal-v1'",[org]);await pool.end();}
+ return {pool,identity,start,close};
+};

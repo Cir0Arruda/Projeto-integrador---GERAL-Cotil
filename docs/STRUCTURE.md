@@ -28,3 +28,11 @@ Não versionar dependências instaladas, caches, builds, arquivos .env, preferê
 | DATABASE (BANCO DE DADOS) | database |
 
 As versões anteriores continuam preservadas pelo histórico Git. O encaminhamento do mobile permite localizar os fontes a partir do link antigo.
+
+
+## Web/API atual — auditoria de 05/11/2026
+
+`apps/web/` contém as fontes atuais de `app/` e `api/`, os testes Web/API e wrappers de integração MySQL descartável. O SDK CAD é fixado no lockfile e seu WASM é reproduzido e conferido por hash no `npm ci`; o binário não é versionado. `apps/desktop` e `apps/mobile` mantêm seus clientes independentes. Os snapshots em `archive` continuam históricos.
+
+Relatórios das duas rodadas e evidências finais: [docs/quality/AUDIT_2026-11-05_FINAL.md](quality/AUDIT_2026-11-05_FINAL.md). Arquivos de ambiente, bancos, logs, dependências e capturas temporárias ficam fora da publicação.
+

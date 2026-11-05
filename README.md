@@ -104,6 +104,7 @@ Este repositório reúne os componentes e os materiais acadêmicos do projeto. O
 
 | Diretório | Conteúdo |
 | --- | --- |
+| [apps/web](apps/web/) | Fontes Web/API atuais, testes e integrações MySQL isoladas. |
 | [apps/desktop](apps/desktop/) | Cliente Electron atual: runtime isolado, ponte IPC, testes e instalador Windows. |
 | [apps/mobile](apps/mobile/) | Cliente Flutter: fontes, recursos, testes e configuração Android/Web. |
 | [DESKTOP APP](<archive/desktop/>) | Fontes e materiais históricos do Desktop e backend, organizados por versão. |
@@ -113,6 +114,20 @@ Este repositório reúne os componentes e os materiais acadêmicos do projeto. O
 | [IMPORT_SECURITY_REVIEW.md](IMPORT_SECURITY_REVIEW.md) | Registro da revisão da importação, configuração e limites do snapshot inicial. |
 
 A descrição funcional deste README segue o TCC. Ao executar um componente, consulte os arquivos e as instruções da versão correspondente: o conteúdo histórico de Web/Desktop e o cliente Flutter têm ciclos próprios de atualização.
+
+## Executar e validar o Web/API
+
+```sh
+cd apps/web
+npm ci
+npm ci --prefix api
+npm ci --prefix tests
+npm test
+```
+
+A execução do servidor requer MySQL provisionado e ambiente da API configurado. Consulte o [README do Web/API](apps/web/README.md). O binário CAD é reproduzido do SDK fixado no lockfile e conferido por SHA-256 durante a instalação.
+
+A [auditoria de 05/11/2026](docs/quality/AUDIT_2026-11-05_FINAL.md) registra duas rodadas de revisão, correções e limites: 442 testes no checkout completo, 420 no módulo Web publicado, 9 no Desktop e 36 no Flutter. Esses resultados são distintos dos números históricos do TCC descritos abaixo.
 
 ## Executar o cliente Desktop
 
@@ -177,3 +192,4 @@ A aplicação Web/API é a referência de implementação e verificação descri
 ---
 
 Desenvolvido como Trabalho de Conclusão de Curso em Limeira, São Paulo.
+

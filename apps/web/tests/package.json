@@ -1,0 +1,15 @@
+{
+  "name": "astha-raven-tests",
+  "private": true,
+  "description": "Isolated development dependencies for the ASTHA test suite",
+  "scripts": {
+    "test": "node ../scripts/test.cjs"
+  },
+  "dependencies": {
+    "jsdom": "^29.1.1"
+  },
+  "overrides": {
+    "source-map-js": "1.2.2",
+    "undici": "7.30.2"
+  }
+}

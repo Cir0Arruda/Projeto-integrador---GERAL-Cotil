@@ -1,0 +1,30 @@
+{
+  "name": "astah-raven-api",
+  "version": "2.0.0",
+  "description": "ASTHA RAVEN — API Server (MySQL)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node start-web.js",
+    "start:principal": "node start-web.js --profile=vps",
+    "start:production": "node production-start.cjs",
+    "start:local": "node start-web.js --profile=local",
+    "dev": "node start-web.js --profile=local"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "4.22.3",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "2.5.0",
+    "mysql2": "3.24.4"
+  },
+  "overrides": {
+    "body-parser": "1.20.9",
+    "brace-expansion": "1.1.21",
+    "proxy-addr": "2.0.8",
+    "qs": "6.17.1"
+  }
+}

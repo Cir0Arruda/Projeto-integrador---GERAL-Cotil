@@ -1,0 +1,39 @@
+# Local credentials and generated files
+.env
+.env.*
+!.env.example
+!**/.env.example
+**/node_modules/
+**/__pycache__/
+dist/
+api/.local/
+
+# Local history, backups and generated evidence must never be published.
+/trash/
+/backups/
+/.security-audit/
+/.security-audit-web/
+/tests/.runtime/
+/tests/**/artifacts/
+*.log
+*.bak
+*.dump
+*.sql.gz
+/*.zip
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Desktop private runtime state
+**/.local/
+**/*.dpapi
+electron/dados.json
+**/preferences.json
+
+# Reproduced by the pinned CAD package during npm ci.
+/app/vendor/occt-import-js/occt-import-js.wasm
