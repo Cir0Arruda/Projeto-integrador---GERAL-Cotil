@@ -33,4 +33,4 @@ Estado: duas rodadas encerradas e gates finais aprovados. O relatório de encerr
 
 ## Encerramento
 
-Rodadas R1 e R2 documentadas, fontes geradas sincronizadas, 442 testes do checkout e 420 do módulo Web aprovados, referências/sintaxe e integrações MySQL isoladas aprovadas, pacote Desktop reconstruído e fronteira pública revisada. O commit é criado após essas verificações. Deploy na VPS e homologação física ficam fora desta entrega de fontes; os limites estão no relatório final. Ausência de achados nos cenários cobertos não constitui prova de inexistência absoluta de bugs.
+Rodadas R1 e R2 documentadas, fontes geradas sincronizadas, 442 testes do checkout e 420 do módulo Web aprovados na auditoria inicial, referências/sintaxe e integrações MySQL isoladas aprovadas, pacote Desktop reconstruído e fronteira pública revisada. O deploy posterior na VPS foi concluído em `web-2026-11-05-01`, com validação HTTPS, interface, persistência, preservação de dados e backup/restauração. Evidências atuais e limites materiais em [Implantação](../operations/DEPLOYMENT_2026-11-05.md). Ausência de achados nos cenários cobertos não constitui prova de inexistência absoluta de bugs.

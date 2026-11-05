@@ -1,5 +1,7 @@
 # Auditoria do ASTHA RAVEN — encerramento técnico em 05/11/2026
 
+> **Implantação posterior concluída em 05/11:** as correções estão ativas na VPS em `web-2026-11-05-01`. Saúde HTTPS, fontes publicadas, dados preservados, interface real, backup/restauração e renovação conferidos. [Relatório operacional](../operations/DEPLOYMENT_2026-11-05.md).
+
 Foram realizadas duas rodadas de inspeção e correção, com revisões cruzadas entre três agentes e verificação integrada pelo coordenador. Os gates finais passaram sem falhas. Não restaram defeitos confirmados abertos nos cenários examinados; isso não prova inexistência absoluta de bugs em qualquer combinação de dados, hardware ou serviço externo.
 
 Foram pesquisadas e baixadas as skills oficiais [webapp-testing, da Anthropic](https://github.com/anthropics/skills/tree/main/skills/webapp-testing) e [security-best-practices, da OpenAI](https://github.com/openai/skills/tree/main/skills/.curated/security-best-practices), usadas junto às regras locais de código seguro, revisão, segredos e dependências.
@@ -46,7 +48,7 @@ O binário CAD não entra no Git: `npm ci` no módulo Web instala `occt-import-j
 
 O instalador atualizado foi copiado para a Área de Trabalho e a versão anterior preservada. SHA-256: `87254963fa15b7bbf0c1c604b185823c2900c71f1afc79a4db2a122d3256ae9c`. O executável continua sem assinatura Authenticode de produção.
 
-As verificações usaram dados sintéticos e processos MySQL descartáveis. Não houve alteração no banco ou serviço da VPS, OAuth externo real, biometria física, instalação/desinstalação em máquina limpa, reescrita de histórico Git ou benchmark de placa gráfica física. As correções desta entrega são de fontes, pacote e publicação Git; o deploy Web/API na VPS é uma operação posterior.
+A auditoria inicial usou dados sintéticos e processos MySQL descartáveis. A implantação posterior na VPS está registrada no relatório operacional acima. OAuth externo real, biometria física, instalação/desinstalação em máquina limpa, assinatura Authenticode e benchmark de placa gráfica física não foram homologados por esses testes. Esses limites não devem ser confundidos com defeitos confirmados ou com o deploy Web/API, que já foi concluído.
 
 No encerramento foi ajustado o próprio harness de auditoria para pausar/liberar a entrada do terminal após fechar HTTP/MySQL. Uma nova inicialização e parada terminaram com código 0 e nenhum processo de servidor de auditoria restante. Essa correção é de infraestrutura de teste, sem alteração das funções de produção.
 

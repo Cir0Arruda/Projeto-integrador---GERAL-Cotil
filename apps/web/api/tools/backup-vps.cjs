@@ -3,11 +3,15 @@ const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('n
 async function main(){
  if(process.platform!=='win32')throw Error('WINDOWS_DPAPI_BACKUP_REQUIRED');
  const {protectWindows,verifyBackup}=require('./backup-snapshots.cjs'),key=crypto.randomBytes(32);
- const directory=path.join(process.env.LOCALAPPDATA,'ASTHA-RAVEN','backups','vps-production-'+new Date().toISOString().replace(/[:.]/g,'-'));
+ const backupRoot=process.env.ASTHA_VPS_BACKUP_ROOT||path.join(process.env.LOCALAPPDATA,'ASTHA-RAVEN','backups');
+ if(!path.isAbsolute(backupRoot))throw Error('BACKUP_ABSOLUTE_ROOT_REQUIRED');
+ const deployKey=process.env.ASTHA_DEPLOY_KEY_PATH||path.join(process.env.LOCALAPPDATA,'ASTHA-RAVEN','deployment','id_ed25519');
+ if(!path.isAbsolute(deployKey))throw Error('DEPLOY_ABSOLUTE_KEY_REQUIRED');
+ const directory=path.join(backupRoot,'vps-production-'+new Date().toISOString().replace(/[:.]/g,'-'));
  await fs.mkdir(directory,{recursive:true});const wrapped=await protectWindows(key,directory);
  try{
   const result=await new Promise((resolve,reject)=>{
-   const child=spawn('ssh',['-i',path.join(process.env.LOCALAPPDATA,'ASTHA-RAVEN','deployment','id_ed25519'),'-o','IdentitiesOnly=yes','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=8','ciroeduardoarrudacosta@136.111.89.192','sudo','-n','/opt/astha/node/bin/node','.astha-deploy/backup-production.cjs'],{windowsHide:true,shell:false,stdio:['pipe','pipe','inherit']});
+   const child=spawn('ssh',['-i',deployKey,'-o','IdentitiesOnly=yes','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=8','ciroeduardoarrudacosta@136.111.89.192','sudo','-n','/opt/astha/node/bin/node','.astha-deploy/backup-production.cjs'],{windowsHide:true,shell:false,stdio:['pipe','pipe','inherit']});
    let bytes=0;const chunks=[],timer=setTimeout(()=>{child.kill();reject(Error('VPS_BACKUP_TIMEOUT'));},120000);
    child.stdout.on('data',b=>{bytes+=b.length;if(bytes>192*1024*1024){child.kill();return;}chunks.push(b);});child.once('error',reject);child.stdin.once('error',()=>reject(Error('VPS_BACKUP_CHANNEL_FAILED')));
    child.once('close',code=>{clearTimeout(timer);if(code!==0)return reject(Error('VPS_BACKUP_FAILED'));try{resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{reject(Error('VPS_BACKUP_INVALID'));}});child.stdin.end(key.toString('hex'));
