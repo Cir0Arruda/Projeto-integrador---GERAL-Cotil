@@ -13,6 +13,8 @@ class RunnerTests: XCTestCase {
     let transport = info["NSAppTransportSecurity"] as? [String: Any] ?? [:]
     XCTAssertFalse(transport["NSAllowsArbitraryLoads"] as? Bool ?? false)
     XCTAssertEqual(info["CFBundleDisplayName"] as? String, "ASTHA RAVEN")
+    XCTAssertEqual(info["BGTaskSchedulerPermittedIdentifiers"] as? [String], ["com.astharaven.asthaApp.outbox"])
+    XCTAssertEqual(info["UIBackgroundModes"] as? [String], ["fetch"])
   }
 
 }

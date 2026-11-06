@@ -45,7 +45,9 @@ class OfflineStore {
         singleInstance: false,
         version: 1,
         onConfigure: (db) async {
-          await db.execute('PRAGMA secure_delete=ON');
+          // Android's SQLite driver treats this PRAGMA as a query returning a
+          // row; execute() rejects it although desktop FFI accepts it.
+          await db.rawQuery('PRAGMA secure_delete=ON');
         },
         onCreate: (db, _) async {
           await db.execute(

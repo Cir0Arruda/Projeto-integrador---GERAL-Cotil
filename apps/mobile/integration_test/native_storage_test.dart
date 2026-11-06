@@ -35,6 +35,8 @@ void main() {
         userId: 900001,
       );
       scope = store.scope;
+      final secureDelete = await store.db.rawQuery('PRAGMA secure_delete');
+      expect(secureDelete.single.values.single, 1);
       await store.enqueue({
         'id': id,
         'method': 'POST',

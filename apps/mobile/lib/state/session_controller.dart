@@ -14,6 +14,7 @@ import '../core/offline_store.dart';
 import '../core/offline_coordinator.dart';
 import '../core/connection_service.dart';
 import '../core/session_store.dart';
+import '../core/background_sync.dart';
 import '../models/account_models.dart';
 import '../repositories/account_repository.dart';
 
@@ -222,6 +223,12 @@ class SessionController extends ChangeNotifier {
         controller,
         DateTime.fromMillisecondsSinceEpoch(identity['until']),
       );
+      try {
+        await BackgroundSync.schedule();
+      } catch (_) {
+        _notice =
+            'Os registros offline estão ativos. A sincronização automática em segundo plano não pôde ser agendada.';
+      }
       return true;
     } catch (_) {
       _notice =
@@ -235,6 +242,9 @@ class SessionController extends ChangeNotifier {
     api.token = null;
     _user = null;
     await _store.clearToken();
+    try {
+      await BackgroundSync.cancel();
+    } catch (_) {}
     _setStatus(SessionStatus.signedOut);
   }
 

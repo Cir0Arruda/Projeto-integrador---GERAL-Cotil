@@ -12,11 +12,16 @@ import 'core/api_client.dart';
 import 'core/config.dart';
 import 'widgets/api_setup.dart';
 import 'core/session_store.dart';
+import 'core/background_sync.dart';
 import 'state/session_controller.dart';
 
 Future<void> main() async {
   // Garante que o motor do Flutter tá 100% pronto antes de rodar qualquer coisa (✿◠‿◠)
   WidgetsFlutterBinding.ensureInitialized();
+  // Background scheduling failure must not prevent opening the application.
+  try {
+    await BackgroundSync.initialize();
+  } catch (_) {}
 
   // Configura a formatação de datas em português do Brasil (dia/mês/ano) :3
   await initializeDateFormatting('pt_BR');

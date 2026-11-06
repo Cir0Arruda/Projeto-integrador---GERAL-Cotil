@@ -10,6 +10,12 @@ export 'api_exception.dart';
 /// Identity and writes are always validated by the API, without SQL fallback.
 class ApiClient extends ChangeNotifier {
   int dataRevision = 0;
+  void refreshAfterResume() {
+    if (_closed || token == null) return;
+    dataRevision++;
+    notifyListeners();
+  }
+
   bool _closed = false;
   OfflineCoordinator? offline;
   DateTime? offlineValidUntil;

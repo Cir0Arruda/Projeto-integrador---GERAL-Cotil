@@ -7,8 +7,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: native-validation-${{ github.ref }}
-  cancel-in-progress: true
+  group: native-validation-${{ github.sha }}
+  cancel-in-progress: false
 defaults:
   run:
     shell: bash
@@ -82,6 +82,8 @@ jobs:
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
           mkdir -p "$RUNNER_TEMP/astha-native-qa"
       - name: Build Android from locked dependencies
+        env:
+          ANDROID_USER_HOME: ${{ runner.temp }}/astha-android
         working-directory: apps/mobile
         run: |
           flutter pub get --enforce-lockfile
@@ -121,7 +123,47 @@ jobs:
           adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-runtime.log"
           if grep -E 'FATAL EXCEPTION|Unhandled Exception|MissingPluginException' "$RUNNER_TEMP/astha-native-qa/android-runtime.log"; then exit 1; fi
           flutter test integration_test/native_storage_test.dart -d emulator-5554 --no-pub --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-native-storage.log"
-          adb emu kill
+      - name: Verify the native worker starts after the UI process has exited
+        working-directory: apps/mobile
+        timeout-minutes: 12
+        run: |
+          flutter build apk --debug --no-pub -t integration_test/background_probe_app.dart --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-background-build.log"
+          adb install -r build/app/outputs/flutter-apk/app-debug.apk
+          adb logcat -c
+          adb shell am start -W -n com.astharaven.astha_app/.MainActivity
+          read_probe() { adb shell run-as com.astharaven.astha_app cat shared_prefs/FlutterSharedPreferences.xml 2>/dev/null; }
+          for i in $(seq 1 30); do
+            if read_probe | grep -q 'qa_background_scheduled.*true'; then break; fi
+            sleep 2
+          done
+          read_probe | grep -q 'qa_background_scheduled.*true'
+          adb shell input keyevent KEYCODE_HOME
+          adb shell am kill com.astharaven.astha_app
+          for i in $(seq 1 15); do
+            if ! adb shell pidof com.astharaven.astha_app; then break; fi
+            sleep 2
+            adb shell am kill com.astharaven.astha_app
+          done
+          if adb shell pidof com.astharaven.astha_app; then echo 'QA UI process did not exit'; exit 1; fi
+          BEFORE=$(read_probe | python3 -c 'import sys,xml.etree.ElementTree as E; r=E.fromstring(sys.stdin.read()); print(next((v.attrib.get("value","") for v in r if v.attrib.get("name","").endswith("qa_background_completed_at")),"absent"))')
+          adb shell dumpsys jobscheduler > "$RUNNER_TEMP/astha-native-qa/android-jobs.txt"
+          JOB=$(python3 -c 'import re,sys; s=open(sys.argv[1]).read(); ids=re.findall(r"JOB #[^/\s]+/(\d+):[^\n]*com\.astharaven\.astha_app/",s); assert ids,"No owned WorkManager OS job"; print(ids[0])' "$RUNNER_TEMP/astha-native-qa/android-jobs.txt")
+          adb shell cmd jobscheduler run -f com.astharaven.astha_app "$JOB"
+          for i in $(seq 1 60); do
+            AFTER=$(read_probe | python3 -c 'import sys,xml.etree.ElementTree as E; r=E.fromstring(sys.stdin.read()); print(next((v.attrib.get("value","") for v in r if v.attrib.get("name","").endswith("qa_background_completed_at")),"absent"))')
+            if [ "$AFTER" != absent ] && [ "$AFTER" != "$BEFORE" ]; then break; fi
+            sleep 2
+          done
+          test "$AFTER" != absent
+          test "$AFTER" != "$BEFORE"
+          read_probe | grep -q 'qa_background_success.*true'
+          echo 'HEADLESS_NATIVE_WORKER_PASSED: UI process exited; signed-out worker completed without sending data' | tee "$RUNNER_TEMP/astha-native-qa/android-background-result.txt"
+          adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-background-runtime.log"
+          if grep -E 'FATAL EXCEPTION|Unhandled Exception|MissingPluginException' "$RUNNER_TEMP/astha-native-qa/android-background-runtime.log"; then exit 1; fi
+      - name: Stop the disposable emulator
+        if: always()
+        run: |
+          if adb -s emulator-5554 get-state >/dev/null 2>&1; then adb -s emulator-5554 emu kill; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
