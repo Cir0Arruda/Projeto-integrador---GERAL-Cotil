@@ -1,0 +1,106 @@
+name: Native platform validation
+on:
+  workflow_dispatch:
+  push:
+    branches: ['validation/native-platforms-*']
+    paths: ['apps/mobile/**', '.github/workflows/native-validation.yml']
+permissions:
+  contents: read
+concurrency:
+  group: native-validation-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install the reviewed Flutter revision
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" fetch --depth=1 origin 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          git -C "$RUNNER_TEMP/flutter" checkout --detach 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/astha-native-qa"
+      - name: Resolve locked dependencies and check Dart
+        working-directory: apps/mobile
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze --no-pub
+          flutter test --no-pub
+      - name: Build the actual iOS simulator application
+        working-directory: apps/mobile
+        run: flutter build ios --simulator --debug --no-codesign --no-pub 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-build.log"
+      - name: Install and launch on the iPhone simulator
+        working-directory: apps/mobile
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for a in d["devices"].values() for v in a if v["name"].startswith("iPhone")))')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build/ios/iphonesimulator/Runner.app
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' build/ios/iphonesimulator/Runner.app/Info.plist)
+          xcrun simctl launch "$DEVICE" "$BUNDLE"
+          sleep 15
+          xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/astha-native-qa/ios-login.png"
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -destination "id=$DEVICE" test 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-tests.log"
+          xcrun simctl shutdown "$DEVICE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ios-simulator-evidence
+          path: ${{ runner.temp }}/astha-native-qa/
+          retention-days: 7
+  android-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install the reviewed Flutter revision
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" fetch --depth=1 origin 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          git -C "$RUNNER_TEMP/flutter" checkout --detach 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/astha-native-qa"
+      - name: Build Android from locked dependencies
+        working-directory: apps/mobile
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build apk --debug --no-pub 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-build.log"
+      - name: Create the disposable Android emulator
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'system-images;android-35;google_apis;x86_64'
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n ASTHA_QA -k 'system-images;android-35;google_apis;x86_64' --force
+          sudo setfacl -m "u:$USER:rw" /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd ASTHA_QA -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 -no-boot-anim > "$RUNNER_TEMP/astha-native-qa/emulator.log" 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
+            sleep 5
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+      - name: Install and launch the actual APK
+        working-directory: apps/mobile
+        run: |
+          adb install build/app/outputs/flutter-apk/app-debug.apk
+          adb logcat -c
+          adb shell am start -W -n com.astharaven.astha_app/.MainActivity
+          sleep 15
+          adb shell pidof com.astharaven.astha_app
+          adb exec-out screencap -p > "$RUNNER_TEMP/astha-native-qa/android-login.png"
+          adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-runtime.log"
+          if grep -E 'FATAL EXCEPTION|Unhandled Exception|MissingPluginException' "$RUNNER_TEMP/astha-native-qa/android-runtime.log"; then exit 1; fi
+          adb emu kill
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: android-emulator-evidence
+          path: ${{ runner.temp }}/astha-native-qa/
+          retention-days: 7
