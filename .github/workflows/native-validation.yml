@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: native-validation-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 defaults:
   run:
     shell: bash
@@ -74,12 +74,14 @@ jobs:
         run: |
           flutter pub get --enforce-lockfile
           flutter build apk --debug --no-pub 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-build.log"
+      - name: Expose Android platform tools
+        run: echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
       - name: Create the disposable Android emulator
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'system-images;android-35;google_apis;x86_64'
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n ASTHA_QA -k 'system-images;android-35;google_apis;x86_64' --force
           sudo setfacl -m "u:$USER:rw" /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd ASTHA_QA -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 -no-boot-anim > "$RUNNER_TEMP/astha-native-qa/emulator.log" 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd ASTHA_QA -port 5554 -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 -no-boot-anim > "$RUNNER_TEMP/astha-native-qa/emulator.log" 2>&1 &
           adb wait-for-device
           for i in $(seq 1 120); do
             if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
@@ -97,6 +99,7 @@ jobs:
           adb exec-out screencap -p > "$RUNNER_TEMP/astha-native-qa/android-login.png"
           adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-runtime.log"
           if grep -E 'FATAL EXCEPTION|Unhandled Exception|MissingPluginException' "$RUNNER_TEMP/astha-native-qa/android-runtime.log"; then exit 1; fi
+          flutter test integration_test/native_storage_test.dart -d emulator-5554 --no-pub --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-native-storage.log"
           adb emu kill
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
