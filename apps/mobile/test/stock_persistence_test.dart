@@ -16,6 +16,7 @@ import 'package:astha_app/repositories/wms_repository.dart';
 import 'package:astha_app/state/warehouse_controller.dart';
 import 'package:astha_app/features/stock/material_form_dialog.dart';
 import 'package:astha_app/features/stock/stock_page.dart';
+import 'package:astha_app/widgets/offline_shell.dart';
 
 class SelectedWarehouse extends WarehouseController {
   SelectedWarehouse(super.repo);
@@ -41,6 +42,48 @@ Widget host(ApiClient api, Widget home) {
 }
 
 void main() {
+  testWidgets(
+    'returning to the app refreshes stock changed by another process',
+    (tester) async {
+      var quantity = 2.0;
+      final api = ApiClient(
+        baseUrl: 'https://api.example.invalid',
+        token: 'synthetic',
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode([
+              {
+                'id': 1,
+                'code': 'RESUME-1',
+                'description': 'Synthetic',
+                'unit': 'UN',
+                'quantity': quantity,
+                'warehouse_id': 7,
+              },
+            ]),
+            200,
+          ),
+        ),
+      );
+      await tester.pumpWidget(
+        host(api, OfflineShell(api: api, child: const StockPage())),
+      );
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      quantity = 1.125;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(api.dataRevision, 1);
+      expect(find.textContaining('1,125'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      api.close();
+    },
+  );
   test(
     'decimal parser rejects NaN and infinity rather than accepting a false stock',
     () {

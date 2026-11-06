@@ -40,7 +40,14 @@ class _OfflineShellState extends State<OfflineShell>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _current?.paused = state != AppLifecycleState.resumed;
-    if (state == AppLifecycleState.resumed) _current?.synchronize();
+    if (state != AppLifecycleState.resumed) {
+      _current?.cancelCacheWritesInFlight();
+    }
+    if (state == AppLifecycleState.resumed) {
+      _current?.synchronize();
+      // A separate native worker or another client may have committed writes.
+      widget.api.refreshAfterResume();
+    }
   }
 
   @override

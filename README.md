@@ -106,7 +106,7 @@ Este repositório reúne os componentes e os materiais acadêmicos do projeto. O
 | --- | --- |
 | [apps/web](apps/web/) | Fontes Web/API atuais, testes e integrações MySQL isoladas. |
 | [apps/desktop](apps/desktop/) | Cliente Electron atual: runtime isolado, ponte IPC, testes e instalador Windows. |
-| [apps/mobile](apps/mobile/) | Cliente Flutter: fontes, recursos, testes e configuração Android/Web. |
+| [apps/mobile](apps/mobile/) | Cliente Flutter: fontes, recursos, testes e configuração Android, iOS e Web. |
 | [DESKTOP APP](<archive/desktop/>) | Fontes e materiais históricos do Desktop e backend, organizados por versão. |
 | [SITE ASTHA](<archive/site/>) | Snapshot dos arquivos do site importado. |
 | [DATABASE (BANCO DE DADOS)](<database/>) | Documentação do esquema de dados. |
@@ -145,7 +145,7 @@ Veja [execução, segurança e empacotamento do Desktop](apps/desktop/README.md)
 
 ## Executar o cliente Flutter
 
-**Pré-requisitos:** Flutter com Dart compatível com o `pubspec.yaml`, Chrome/Edge para Web ou ambiente Android configurado.
+**Pré-requisitos:** Flutter 3.47.0, Chrome/Edge para Web ou ambiente Android configurado. Para o simulador iOS, macOS com Xcode 26.3 e CocoaPods; instalação em iPhone exige provisionamento Apple próprio.
 
 ```sh
 git clone https://github.com/Cir0Arruda/Projeto-integrador---GERAL-Cotil.git
@@ -179,7 +179,7 @@ A documentação apresenta requisitos, modelagem de dados, casos de uso, arquite
 
 A aplicação Web/API é a referência de implementação compartilhada com o Desktop e o Mobile. O cliente Mobile nativo implementa cache e fila SQLite cifrados para as operações suportadas, com confirmação idempotente pela API e conflitos explícitos; Flutter Web e ações que exigem conexão têm limites próprios. A avaliação em aparelhos físicos, biometria, execução em segundo plano e uso industrial em campo permanece uma etapa distinta dos ensaios controlados.
 
-Na reconciliação de **6 de novembro de 2026**, a suíte canônica aprovou **464 testes** e a checagem examinou **420 arquivos JavaScript**. O ensaio com quatro empresas comprovou Web, Electron e repositórios Flutter reais consultando o mesmo saldo persistido, com isolamento entre empresas e atualização das tabelas abertas. Não são contagens universais nem somas de suítes sobrepostas.
+Na reconciliação de **6 de novembro de 2026**, a suíte canônica aprovou **465 testes** e a checagem examinou **420 arquivos JavaScript**. O ensaio com quatro empresas comprovou Web, Electron e repositórios Flutter reais consultando o mesmo saldo persistido, com isolamento entre empresas e atualização das tabelas abertas. Não são contagens universais nem somas de suítes sobrepostas.
 
 - [Release de correções e evidências do TCC](docs/quality/RELEASE_2026-11-06_TCC.md)
 - [Matriz dos 16 casos de uso](docs/quality/TCC_2026-11-05_TRACEABILITY.md)
@@ -200,3 +200,8 @@ Na reconciliação de **6 de novembro de 2026**, a suíte canônica aprovou **46
 Desenvolvido como Trabalho de Conclusão de Curso em Limeira, São Paulo.
 
 
+
+
+A validação complementar acrescentou o target iOS e o agendamento nativo da fila existente. A suíte Flutter local aprovou **57 testes**, com um teste de integração vivo ignorado por padrão. Android e iOS executaram armazenamento seguro e SQLite cifrado em emulador/simulador. Um ensaio Android confirmou a saída do processo de interface e a entrega de uma tarefa pelo SO em um novo processo, com sessão encerrada e sem envio de dados. Isso não homologa biometria física, movimentação autenticada com o aplicativo encerrado nem intervalo periódico exato.
+
+O [registro de validação complementar](docs/quality/VALIDATION_PENDING_2026-11-06.md) distingue evidências, correções e pendências externas: aparelhos, consentimento Google, e-mail real, assinatura comercial e desinstalação manual da cópia QA. O instalador continua sem assinatura comercial; não se declara homologação universal ou conclusão dessas pendências.

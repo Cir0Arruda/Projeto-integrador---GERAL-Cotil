@@ -4,11 +4,73 @@ import 'config.dart';
 import 'dart:convert';
 import 'offline_store.dart';
 
+class BackgroundSession {
+  const BackgroundSession(this.origin, this.token, this.org, this.userId);
+  final String origin, token, org;
+  final int userId;
+  bool sameAs(BackgroundSession? other) =>
+      other != null &&
+      origin == other.origin &&
+      token == other.token &&
+      org == other.org &&
+      userId == other.userId;
+}
+
 class SessionStore {
   static const _tokenKey = 'auth_token', _serverKey = 'server_url_api_v3';
   static const _deploymentKey = 'api_deployment_revision';
   static const _deploymentRevision = 'vps-2026-10-21';
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
+
+  /// Read-only snapshot. Reload preferences because workers use another isolate.
+  /// Never migrates configuration or deletes a newer foreground session.
+  Future<BackgroundSession?> readBackgroundSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      if (prefs.getBool('session_blocked') == true) return null;
+      final saved = prefs.getString(_serverKey);
+      final origin = AppConfig.normalizeServerUrl(
+        saved ?? AppConfig.defaultServerUrl,
+      );
+      final token = await _secure.read(key: _tokenKey);
+      if (token == null ||
+          await _secure.read(key: 'auth_token_origin') != origin) {
+        return null;
+      }
+      final raw = await _secure.read(key: 'offline_identity');
+      if (raw == null) return null;
+      final value = jsonDecode(raw);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (value is! Map ||
+          value['origin'] != origin ||
+          value['digest'] != await offlineHash(token) ||
+          value['until'] is! int ||
+          value['verifiedAt'] is! int ||
+          now >= value['until'] ||
+          now < value['verifiedAt']) {
+        return null;
+      }
+      final user = value['user'];
+      if (user is! Map ||
+          user['id'] is! int ||
+          user['id'] <= 0 ||
+          user['org_id'] is! String ||
+          (user['org_id'] as String).isEmpty) {
+        return null;
+      }
+      await prefs.reload();
+      if (prefs.getBool('session_blocked') == true ||
+          prefs.getString(_serverKey) != saved ||
+          await _secure.read(key: _tokenKey) != token) {
+        return null;
+      }
+      return BackgroundSession(origin, token, user['org_id'], user['id']);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String> readServerUrl() async {
     final prefs = await SharedPreferences.getInstance();
     var saved = prefs.getString(_serverKey);

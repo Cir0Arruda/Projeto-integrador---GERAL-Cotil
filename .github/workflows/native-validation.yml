@@ -1,0 +1,178 @@
+name: Native platform validation
+on:
+  workflow_dispatch:
+  push:
+    branches: ['validation/native-platforms-*']
+    paths: ['apps/mobile/**', '.github/workflows/native-validation.yml']
+permissions:
+  contents: read
+concurrency:
+  group: native-validation-${{ github.sha }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # workmanager_apple references iOS 26 symbols; the runner's default is 16.4.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install the reviewed Flutter revision
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" fetch --depth=1 origin 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          git -C "$RUNNER_TEMP/flutter" checkout --detach 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/astha-native-qa"
+      - name: Resolve locked dependencies and check Dart
+        working-directory: apps/mobile
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze --no-pub
+          flutter test --no-pub
+      - name: Build the actual iOS simulator application
+        working-directory: apps/mobile
+        run: flutter build ios --simulator --debug --no-codesign --no-pub 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-build.log"
+      - name: Install and launch on the iPhone simulator
+        working-directory: apps/mobile
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for a in d["devices"].values() for v in a if v["name"].startswith("iPhone")))')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build/ios/iphonesimulator/Runner.app
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' build/ios/iphonesimulator/Runner.app/Info.plist)
+          xcrun simctl launch "$DEVICE" "$BUNDLE"
+          sleep 15
+          xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/astha-native-qa/ios-login.png"
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -destination "id=$DEVICE" test 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-tests.log"
+          device_state() {
+            xcrun simctl list devices --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["state"] for a in d["devices"].values() for v in a if v["udid"]==sys.argv[1]))' "$DEVICE"
+          }
+          STATE=$(device_state)
+          if [ "$STATE" = Shutdown ]; then xcrun simctl boot "$DEVICE"; fi
+          xcrun simctl bootstatus "$DEVICE" -b
+          flutter test integration_test/native_storage_test.dart -d "$DEVICE" --no-pub --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-native-storage.log"
+          STATE=$(device_state)
+          if [ "$STATE" = Booted ]; then
+            if ! xcrun simctl shutdown "$DEVICE"; then test "$(device_state)" = Shutdown; fi
+          else
+            test "$STATE" = Shutdown
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ios-simulator-evidence
+          path: ${{ runner.temp }}/astha-native-qa/
+          retention-days: 7
+  android-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install the reviewed Flutter revision
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" fetch --depth=1 origin 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          git -C "$RUNNER_TEMP/flutter" checkout --detach 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/astha-native-qa"
+      - name: Build Android from locked dependencies
+        env:
+          ANDROID_USER_HOME: ${{ runner.temp }}/astha-android
+        working-directory: apps/mobile
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build apk --debug --no-pub 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-build.log"
+      - name: Expose Android platform tools
+        run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/astha-android" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/astha-android" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/astha-android/avd" >> "$GITHUB_ENV"
+      - name: Create the disposable Android emulator
+        timeout-minutes: 20
+        run: |
+          mkdir -p "$ANDROID_AVD_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'system-images;android-35;google_apis;x86_64'
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n ASTHA_QA -k 'system-images;android-35;google_apis;x86_64' --path "$ANDROID_AVD_HOME/ASTHA_QA.avd" --force
+          test -f "$ANDROID_AVD_HOME/ASTHA_QA.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx ASTHA_QA
+          sudo setfacl -m "u:$USER:rw" /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd ASTHA_QA -port 5554 -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 -no-boot-anim > "$RUNNER_TEMP/astha-native-qa/emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          for i in $(seq 1 120); do
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then cat "$RUNNER_TEMP/astha-native-qa/emulator.log"; exit 1; fi
+            if [ "$(timeout 10 adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+            sleep 5
+          done
+          test "$(timeout 10 adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1
+      - name: Install and launch the actual APK
+        working-directory: apps/mobile
+        run: |
+          adb install build/app/outputs/flutter-apk/app-debug.apk
+          adb logcat -c
+          adb shell am start -W -n com.astharaven.astha_app/.MainActivity
+          sleep 15
+          adb shell pidof com.astharaven.astha_app
+          adb exec-out screencap -p > "$RUNNER_TEMP/astha-native-qa/android-login.png"
+          adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-runtime.log"
+          if grep -E 'FATAL EXCEPTION|Unhandled Exception|MissingPluginException' "$RUNNER_TEMP/astha-native-qa/android-runtime.log"; then exit 1; fi
+          flutter test integration_test/native_storage_test.dart -d emulator-5554 --no-pub --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-native-storage.log"
+      - name: Verify the native worker starts after the UI process has exited
+        working-directory: apps/mobile
+        timeout-minutes: 12
+        run: |
+          trap 'adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-background-runtime.log"' EXIT
+          flutter build apk --debug --no-pub -t integration_test/background_probe_app.dart --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-background-build.log"
+          adb install -r build/app/outputs/flutter-apk/app-debug.apk
+          adb logcat -c
+          adb shell am start -W -n com.astharaven.astha_app/.MainActivity
+          read_probe() { adb shell run-as com.astharaven.astha_app cat shared_prefs/FlutterSharedPreferences.xml 2>/dev/null; }
+          for i in $(seq 1 30); do
+            if read_probe | grep -q 'qa_background_scheduled.*true'; then break; fi
+            sleep 2
+          done
+          read_probe | grep -q 'qa_background_scheduled.*true'
+          adb shell input keyevent KEYCODE_HOME
+          adb shell am kill com.astharaven.astha_app
+          for i in $(seq 1 15); do
+            if ! adb shell pidof com.astharaven.astha_app; then break; fi
+            sleep 2
+            adb shell am kill com.astharaven.astha_app
+          done
+          if adb shell pidof com.astharaven.astha_app; then echo 'QA UI process did not exit'; exit 1; fi
+          BEFORE=$(read_probe | python3 -c 'import sys,xml.etree.ElementTree as E; r=E.fromstring(sys.stdin.read()); print(next((v.attrib.get("value","") for v in r if v.attrib.get("name","").endswith("qa_background_completed_at")),"absent"))')
+          adb shell dumpsys jobscheduler > "$RUNNER_TEMP/astha-native-qa/android-jobs.txt"
+          python3 -c 'import re,sys; s=open(sys.argv[1]).read(); ids=re.findall(r"^\s*JOB (?:([^:\s]+):)?#?[^/\s]+/(-?\d+):[^\n]*com\.astharaven\.astha_app/",s,re.M); assert ids,"No owned WorkManager OS job"; print("Owned OS jobs:",len(ids))' "$RUNNER_TEMP/astha-native-qa/android-jobs.txt"
+          # The QA entrypoint schedules a 45-second one-off using the real
+          # dispatcher. Let the OS deliver it after the UI process has exited.
+          # Forcing an early periodic job races WorkManager's cold-start cleanup.
+          for i in $(seq 1 60); do
+            AFTER=$(read_probe | python3 -c 'import sys,xml.etree.ElementTree as E; r=E.fromstring(sys.stdin.read()); print(next((v.attrib.get("value","") for v in r if v.attrib.get("name","").endswith("qa_background_completed_at")),"absent"))')
+            if [ "$AFTER" != absent ] && [ "$AFTER" != "$BEFORE" ]; then break; fi
+            sleep 2
+          done
+          test "$AFTER" != absent
+          test "$AFTER" != "$BEFORE"
+          read_probe | grep -q 'qa_background_success.*true'
+          echo 'HEADLESS_NATIVE_WORKER_PASSED: UI process exited; signed-out worker completed without sending data' | tee "$RUNNER_TEMP/astha-native-qa/android-background-result.txt"
+          adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-background-runtime.log"
+          if grep -E 'FATAL EXCEPTION|Unhandled Exception|MissingPluginException' "$RUNNER_TEMP/astha-native-qa/android-background-runtime.log"; then exit 1; fi
+      - name: Stop the disposable emulator
+        if: always()
+        run: |
+          if adb -s emulator-5554 get-state >/dev/null 2>&1; then adb -s emulator-5554 emu kill; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: android-emulator-evidence
+          path: ${{ runner.temp }}/astha-native-qa/
+          retention-days: 7

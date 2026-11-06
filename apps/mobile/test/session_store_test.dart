@@ -3,9 +3,61 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:astha_app/core/session_store.dart';
 import 'package:astha_app/core/config.dart';
+import 'dart:convert';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'background snapshot rejects logout, expired identity and origin mismatch without deleting auth',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+      final store = SessionStore();
+      await store.writeServerUrl(AppConfig.productionServerUrl);
+      final payload = base64Url.encode(
+        utf8.encode(
+          jsonEncode({
+            'exp':
+                DateTime.now()
+                    .add(const Duration(hours: 1))
+                    .millisecondsSinceEpoch ~/
+                1000,
+          }),
+        ),
+      );
+      final token = 'synthetic.$payload.signature';
+      await store.writeToken(token);
+      await store.rememberIdentity(token, {
+        'id': 7,
+        'org_id': 'qa-org',
+      }, 'corporate');
+      final snapshot = await store.readBackgroundSession();
+      expect(snapshot?.userId, 7);
+      expect(snapshot?.org, 'qa-org');
+    await (await SharedPreferences.getInstance()).remove('server_url_api_v3');
+    expect((await store.readBackgroundSession())?.userId, 7);
+      await (await SharedPreferences.getInstance()).setBool(
+        'session_blocked',
+        true,
+      );
+      expect(await store.readBackgroundSession(), isNull);
+      await (await SharedPreferences.getInstance()).remove('session_blocked');
+      await store.writeServerUrl('https://different.example.invalid');
+      expect(await store.readBackgroundSession(), isNull);
+      expect(await const FlutterSecureStorage().read(key: 'auth_token'), token);
+      await store.writeServerUrl(AppConfig.productionServerUrl);
+      final raw = await const FlutterSecureStorage().read(
+        key: 'offline_identity',
+      );
+      final identity = jsonDecode(raw!) as Map<String, dynamic>;
+      identity['until'] = 0;
+      await const FlutterSecureStorage().write(
+        key: 'offline_identity',
+        value: jsonEncode(identity),
+      );
+      expect(await store.readBackgroundSession(), isNull);
+    },
+  );
   test(
     'first VPS revision replaces an old explicit-local selection without deleting unrelated saved data',
     () async {

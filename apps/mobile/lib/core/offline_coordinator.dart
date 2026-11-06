@@ -28,6 +28,10 @@ class OfflineCoordinator extends ChangeNotifier {
   final Map<String, DateTime> _cachedReads = {};
   String? notice;
   int _readGeneration = 0;
+  void cancelCacheWritesInFlight() {
+    _readGeneration++;
+  }
+
   Future<void> invalidateReads() async {
     _readGeneration++;
     await store.clearCache();
@@ -183,17 +187,20 @@ class OfflineCoordinator extends ChangeNotifier {
     }
   }
 
-  Future<void> synchronize() async {
+  Future<void> synchronize({int? maxOperations}) async {
     if (closed || paused || busy) return;
     busy = true;
     if (!closed) notifyListeners();
     try {
       final jobs = await store.jobs();
+      var sent = 0;
       for (final job in jobs) {
         if (closed || paused) break;
+        if (maxOperations != null && sent >= maxOperations) break;
         if (job['state'] != 'pending') break;
         try {
           await _send(Map<String, dynamic>.from(job['operation']));
+          sent++;
         } on QueuedOperationException {
           break;
         } on ApiException {
@@ -222,9 +229,14 @@ class OfflineCoordinator extends ChangeNotifier {
 
   @override
   void dispose() {
+    unawaited(shutdown().catchError((Object _) {}));
+    super.dispose();
+  }
+
+  Future<void>? _shutdown;
+  Future<void> shutdown() {
     closed = true;
     _timer?.cancel();
-    unawaited(store.close().catchError((Object _) {}));
-    super.dispose();
+    return _shutdown ??= store.close();
   }
 }
