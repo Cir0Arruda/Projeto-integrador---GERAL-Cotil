@@ -48,7 +48,19 @@ jobs:
           sleep 15
           xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/astha-native-qa/ios-login.png"
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -destination "id=$DEVICE" test 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-tests.log"
-          xcrun simctl shutdown "$DEVICE"
+          device_state() {
+            xcrun simctl list devices --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["state"] for a in d["devices"].values() for v in a if v["udid"]==sys.argv[1]))' "$DEVICE"
+          }
+          STATE=$(device_state)
+          if [ "$STATE" = Shutdown ]; then xcrun simctl boot "$DEVICE"; fi
+          xcrun simctl bootstatus "$DEVICE" -b
+          flutter test integration_test/native_storage_test.dart -d "$DEVICE" --no-pub --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/ios-native-storage.log"
+          STATE=$(device_state)
+          if [ "$STATE" = Booted ]; then
+            if ! xcrun simctl shutdown "$DEVICE"; then test "$(device_state)" = Shutdown; fi
+          else
+            test "$STATE" = Shutdown
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -75,19 +87,28 @@ jobs:
           flutter pub get --enforce-lockfile
           flutter build apk --debug --no-pub 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-build.log"
       - name: Expose Android platform tools
-        run: echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-      - name: Create the disposable Android emulator
         run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/astha-android" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/astha-android" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/astha-android/avd" >> "$GITHUB_ENV"
+      - name: Create the disposable Android emulator
+        timeout-minutes: 20
+        run: |
+          mkdir -p "$ANDROID_AVD_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'system-images;android-35;google_apis;x86_64'
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n ASTHA_QA -k 'system-images;android-35;google_apis;x86_64' --force
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n ASTHA_QA -k 'system-images;android-35;google_apis;x86_64' --path "$ANDROID_AVD_HOME/ASTHA_QA.avd" --force
+          test -f "$ANDROID_AVD_HOME/ASTHA_QA.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx ASTHA_QA
           sudo setfacl -m "u:$USER:rw" /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd ASTHA_QA -port 5554 -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 -no-boot-anim > "$RUNNER_TEMP/astha-native-qa/emulator.log" 2>&1 &
-          adb wait-for-device
+          EMULATOR_PID=$!
           for i in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then cat "$RUNNER_TEMP/astha-native-qa/emulator.log"; exit 1; fi
+            if [ "$(timeout 10 adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
             sleep 5
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          test "$(timeout 10 adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1
       - name: Install and launch the actual APK
         working-directory: apps/mobile
         run: |
