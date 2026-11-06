@@ -28,6 +28,10 @@ class OfflineCoordinator extends ChangeNotifier {
   final Map<String, DateTime> _cachedReads = {};
   String? notice;
   int _readGeneration = 0;
+  void cancelCacheWritesInFlight() {
+    _readGeneration++;
+  }
+
   Future<void> invalidateReads() async {
     _readGeneration++;
     await store.clearCache();

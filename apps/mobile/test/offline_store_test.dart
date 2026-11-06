@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:astha_app/core/offline_store.dart';
@@ -28,6 +29,78 @@ void main() {
   tearDown(() async {
     await directory.delete(recursive: true);
   });
+  test(
+    'suspending cache writes preserves the offline copy and rejects a late response',
+    () async {
+      final store = await open();
+      await store.cache('/api/materials', null, [
+        {'code': 'QA', 'quantity': 1},
+      ]);
+      final entered = Completer<void>(), answer = Completer<dynamic>();
+      final coordinator = OfflineCoordinator(store, (
+        method,
+        path, {
+        query,
+        body,
+      }) {
+        entered.complete();
+        return answer.future;
+      }, startTimer: false);
+      final read = coordinator.dispatch('GET', '/api/materials');
+      await entered.future;
+      coordinator.cancelCacheWritesInFlight();
+      answer.complete([
+        {'code': 'QA', 'quantity': 99},
+      ]);
+      await read;
+      expect(
+        (await store.cached(
+          '/api/materials',
+          null,
+        ))!['value'].single['quantity'],
+        1,
+      );
+      await coordinator.shutdown();
+      coordinator.dispose();
+    },
+  );
+  test(
+    'a background opener never provisions or overwrites an offline encryption key',
+    () async {
+      await expectLater(
+        OfflineStore.open(
+          origin: 'https://api.example.invalid',
+          org: 'org-a',
+          userId: 7,
+          factory: databaseFactoryFfi,
+          path: '${directory.path}/offline.sqlite',
+          readKey: (key) async => keys[key],
+          writeKey: (key, value) async {
+            fail('Worker must not provision a key');
+          },
+          requireExistingKey: true,
+        ),
+        throwsStateError,
+      );
+      expect(keys, isEmpty);
+      final prepared = await open();
+      await prepared.close();
+      final worker = await OfflineStore.open(
+        origin: 'https://api.example.invalid',
+        org: 'org-a',
+        userId: 7,
+        factory: databaseFactoryFfi,
+        path: '${directory.path}/offline.sqlite',
+        readKey: (key) async => keys[key],
+        writeKey: (key, value) async {
+          fail('Worker must preserve the existing key');
+        },
+        requireExistingKey: true,
+      );
+      expect(await worker.jobs(), isEmpty);
+      await worker.close();
+    },
+  );
   test(
     'SQLite survives close/reopen, encrypts payloads and isolates identities',
     () async {

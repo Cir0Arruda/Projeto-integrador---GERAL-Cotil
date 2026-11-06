@@ -35,6 +35,7 @@ class OfflineStore {
     String? path,
     SecureKeyLoader? readKey,
     SecureKeyWriter? writeKey,
+    bool requireExistingKey = false,
   }) async {
     final engine = factory ?? databaseFactory;
     final db = await engine.openDatabase(
@@ -71,6 +72,11 @@ class OfflineStore {
           (String key, String value) => secure.write(key: key, value: value);
       var raw = await read('offline_key_$scope');
       if (raw == null) {
+        // A worker must not race the first foreground session to create two
+        // different keys for one scope. Only the foreground provisions keys.
+        if (requireExistingKey) {
+          throw StateError('Os registros offline ainda não foram preparados.');
+        }
         final rows = await db.rawQuery(
           'SELECT (SELECT COUNT(*) FROM cache WHERE scope=?)+(SELECT COUNT(*) FROM outbox WHERE scope=?) AS total',
           [scope, scope],

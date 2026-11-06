@@ -130,6 +130,7 @@ jobs:
         working-directory: apps/mobile
         timeout-minutes: 12
         run: |
+          trap 'adb logcat -d > "$RUNNER_TEMP/astha-native-qa/android-background-runtime.log"' EXIT
           flutter build apk --debug --no-pub -t integration_test/background_probe_app.dart --dart-define=ASTHA_ISOLATED_NATIVE_QA=true 2>&1 | tee "$RUNNER_TEMP/astha-native-qa/android-background-build.log"
           adb install -r build/app/outputs/flutter-apk/app-debug.apk
           adb logcat -c
@@ -150,8 +151,12 @@ jobs:
           if adb shell pidof com.astharaven.astha_app; then echo 'QA UI process did not exit'; exit 1; fi
           BEFORE=$(read_probe | python3 -c 'import sys,xml.etree.ElementTree as E; r=E.fromstring(sys.stdin.read()); print(next((v.attrib.get("value","") for v in r if v.attrib.get("name","").endswith("qa_background_completed_at")),"absent"))')
           adb shell dumpsys jobscheduler > "$RUNNER_TEMP/astha-native-qa/android-jobs.txt"
-          JOB=$(python3 -c 'import re,sys; s=open(sys.argv[1]).read(); ids=re.findall(r"JOB #[^/\s]+/(\d+):[^\n]*com\.astharaven\.astha_app/",s); assert ids,"No owned WorkManager OS job"; print(ids[0])' "$RUNNER_TEMP/astha-native-qa/android-jobs.txt")
-          adb shell cmd jobscheduler run -f com.astharaven.astha_app "$JOB"
+          read -r NAMESPACE JOB < <(python3 -c 'import re,sys; s=open(sys.argv[1]).read(); ids=re.findall(r"^\s*JOB (?:([^:\s]+):)?#?[^/\s]+/(-?\d+):[^\n]*com\.astharaven\.astha_app/",s,re.M); assert ids,"No owned WorkManager OS job"; namespace,job=ids[0]; assert namespace in ("","androidx.work.systemjobscheduler"),"Unexpected owned job namespace"; print(namespace or "default",job)' "$RUNNER_TEMP/astha-native-qa/android-jobs.txt")
+          if [ "$NAMESPACE" = default ]; then
+            adb shell cmd jobscheduler run -f com.astharaven.astha_app "$JOB"
+          else
+            adb shell cmd jobscheduler run -f -n "$NAMESPACE" com.astharaven.astha_app "$JOB"
+          fi
           for i in $(seq 1 60); do
             AFTER=$(read_probe | python3 -c 'import sys,xml.etree.ElementTree as E; r=E.fromstring(sys.stdin.read()); print(next((v.attrib.get("value","") for v in r if v.attrib.get("name","").endswith("qa_background_completed_at")),"absent"))')
             if [ "$AFTER" != absent ] && [ "$AFTER" != "$BEFORE" ]; then break; fi

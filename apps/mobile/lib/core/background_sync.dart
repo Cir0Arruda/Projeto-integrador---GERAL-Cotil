@@ -89,6 +89,7 @@ class BackgroundSyncRunner {
              origin: s.origin,
              org: s.org,
              userId: s.userId,
+             requireExistingKey: true,
            )),
        createClient =
            createClient ??
