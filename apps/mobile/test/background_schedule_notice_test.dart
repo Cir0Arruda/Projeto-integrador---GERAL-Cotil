@@ -41,7 +41,7 @@ void main() {
       final api = ApiClient(
         baseUrl: 'https://qa.example.invalid',
         client: MockClient((r) async {
-          if (r.url.path == '/api/auth/login')
+          if (r.url.path == '/api/auth/login') {
             return http.Response(
               jsonEncode({
                 'token': 'synthetic.$payload.signature',
@@ -55,6 +55,7 @@ void main() {
               }),
               200,
             );
+          }
           expect(r.url.path, '/api/workspace/context');
           return http.Response('{"type":"corporate","setupDone":true}', 200);
         }),
