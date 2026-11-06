@@ -28,3 +28,15 @@ test('GLB structural corruption, missing JSON and malformed resource shapes fail
   for(const bytes of [valid.subarray(0,12),truncated,wrongType,glb({asset:{version:'2.0'},images:{uri:'data:image/png;base64,AAAA'}})])
     assert.throws(()=>validateAttachment(attachment(bytes)));
 });
+
+test('large valid attachments and embedded buffers do not exhaust the regexp stack',()=>{
+  const embedded=Buffer.alloc(2*1024*1024,17).toString('base64');
+  const bytes=glb({asset:{version:'2.0'},buffers:[{uri:'data:application/octet-stream;base64,'+embedded}]});
+  assert.equal(validateAttachment(attachment(bytes)).mime_type,'model/gltf-binary');
+  const stl=Buffer.alloc(84+50*60000);stl.writeUInt32LE(60000,80);
+  assert.equal(validateAttachment({filename:'large.stl',file_data:stl.toString('base64')}).mime_type,'application/octet-stream');
+  for(const raw of ['AAAA=','AA=A','AAA','AA!A','A===','AAAA\n'])
+    assert.throws(()=>validateAttachment({filename:'invalid.stl',file_data:raw}),/Base64 inválido/);
+  const bad=glb({asset:{version:'2.0'},images:[{uri:'data:image/png;base64,AAAA=AAA'}]});
+  assert.throws(()=>validateAttachment(attachment(bad)),/Tipo ou conteúdo/);
+});

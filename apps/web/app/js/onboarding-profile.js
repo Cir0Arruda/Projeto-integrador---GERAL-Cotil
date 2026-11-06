@@ -3,7 +3,7 @@ let obProfilePhoto=null,obProfilePhotoDirty=false,obProfilePhotoBusy=false,obPro
 function selectWorkspaceType(type){
   if(!['personal','corporate'].includes(type))return;
   if(!obCorporateCopy)obCorporateCopy={title:document.querySelector('#step4 .ob-title').textContent,subtitle:document.querySelector('#step4 .ob-subtitle').textContent,label:document.getElementById('obOrgName').previousElementSibling.textContent,profile:document.querySelector('#step2 .ob-subtitle').textContent};
-  workspaceType=type;sessionStorage.setItem('astha_onboarding_type',type);
+  workspaceType=type;if(onboardingTypeKey)sessionStorage.setItem(onboardingTypeKey,type);
   const personal=type==='personal';
   document.querySelectorAll('[name=obWorkspaceType]').forEach(input=>{input.checked=input.value===type;input.closest('label').classList.toggle('selected',input.checked);});
   document.getElementById('obCorporateFields').hidden=personal;

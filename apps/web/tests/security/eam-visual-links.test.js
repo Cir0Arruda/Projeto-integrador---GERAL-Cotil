@@ -8,6 +8,7 @@ const calls = [];
 const execute = async (sql, parameters) => {
   calls.push({ sql, parameters });
   const owns = parameters.includes('tenant-a');
+  if (sql.startsWith('SELECT id FROM organizations WHERE id=? FOR UPDATE')) return [owns ? [{ id: 'tenant-a' }] : []];
   if (sql.startsWith('SELECT id,functional_location_id FROM assets')) return [owns ? [{ id: 7, functional_location_id: 12 }] : []];
   if (sql.startsWith('SELECT id FROM assets')) return [owns ? [{ id: 7 }] : []];
   if (sql.startsWith('SELECT id FROM functional_locations')) return [owns && Number(parameters[0]) === 12 ? [{ id: 12 }] : []];

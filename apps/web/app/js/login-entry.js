@@ -7,8 +7,9 @@
   async function acceptSession(result){
     if(!result.success||!result.token||!result.user)throw Error(result.error||'Não foi possível entrar.');
     localStorage.setItem('astha_token',result.token);localStorage.setItem('astha_user',JSON.stringify(result.user));
-    const saved=sessionStorage.getItem('ASTHA_redirect');sessionStorage.removeItem('ASTHA_redirect');let destination=result.user.setup_done?'./home.html':'./onboarding.html';
-    if(result.user.setup_done&&saved)try{const url=new URL(saved,location.href);if(url.origin===location.origin&&url.pathname.startsWith('/app/')&&!['/app/login.html','/app/register.html'].includes(url.pathname))destination=url.pathname+url.search;}catch(_){}
+    const setupDone=typeof result.setup_done==='boolean'?result.setup_done:result.user.setup_done===true;
+    const saved=sessionStorage.getItem('ASTHA_redirect');sessionStorage.removeItem('ASTHA_redirect');let destination=setupDone?'./home.html':'./onboarding.html';
+    if(setupDone&&saved)try{const url=new URL(saved,location.href);if(url.origin===location.origin&&url.pathname.startsWith('/app/')&&!['/app/login.html','/app/register.html'].includes(url.pathname))destination=url.pathname+url.search;}catch(_){}
     location.assign(destination);
   }
   async function microsoft(){
@@ -42,17 +43,7 @@
     error.hidden = true;
     try {
       const result = await API.post('/auth/login', { email: form.elements.email.value.trim(), password: password.value });
-      if (!result.success || !result.token || !result.user) throw new Error(result.error || 'Não foi possível entrar. Confira seus dados.');
-      localStorage.setItem('astha_token', result.token);
-      localStorage.setItem('astha_user', JSON.stringify(result.user));
-      const path = sessionStorage.getItem('ASTHA_redirect');
-      sessionStorage.removeItem('ASTHA_redirect');
-      let destination = './home.html';
-      try {
-        const url = new URL(path || destination, location.href);
-        if (url.origin === location.origin && url.pathname.startsWith('/app/') && !['/app/login.html','/app/register.html'].includes(url.pathname)) destination = url.pathname + url.search;
-      } catch (_) { /* Invalid saved path uses the home page. */ }
-      location.assign(destination);
+      await acceptSession(result);
     } catch (failure) {
       error.textContent = failure.message || 'Não foi possível conectar. Tente novamente.';
       error.hidden = false;

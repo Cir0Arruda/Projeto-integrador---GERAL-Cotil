@@ -25,6 +25,7 @@
   let previewSerial = 0;
   let activeObjectUrl = null;
   let activeViewer = null;
+  let activePreviewCleanup = null;
   let activeEditorKeyHandler = null;
   let activeDxfCleanup = null;
   let requestedCreatorAsset = null;
@@ -36,6 +37,7 @@
   function disposePreview() {
     ++previewSerial;
     if (activeEditorKeyHandler) { document.removeEventListener('keydown', activeEditorKeyHandler, true); activeEditorKeyHandler = null; }
+    if (activePreviewCleanup) { const cleanup = activePreviewCleanup; activePreviewCleanup = null; cleanup(); }
     if (activeViewer) { activeViewer.dispose(); activeViewer = null; }
     if (activeObjectUrl) { URL.revokeObjectURL(activeObjectUrl); activeObjectUrl = null; }
     if (activeDxfCleanup) { activeDxfCleanup(); activeDxfCleanup = null; }
@@ -206,25 +208,29 @@
     if (['step', 'stp', 'iges', 'igs'].includes(ext)) return EamCadImport.parse(buffer, ext);
     if (ext === 'stl') return Promise.resolve(new THREE.Mesh(new THREE.STLLoader().parse(buffer), new THREE.MeshStandardMaterial({ color: 0x526f8c, metalness: .18, roughness: .58 })));
     if (ext === 'obj') return Promise.resolve(new THREE.OBJLoader().parse(new TextDecoder().decode(buffer)));
-    if (ext === 'gltf' || ext === 'glb') return new Promise((resolve, reject) => new THREE.GLTFLoader().parse(buffer, '', gltf => resolve(gltf.scene), reject));
+    if (ext === 'gltf' || ext === 'glb') return new Promise((resolve, reject) => new THREE.GLTFLoader(createViewerResourceManager()).parse(buffer, '', gltf => resolve(gltf.scene), reject));
     return Promise.reject(new Error('Formato 3D não reconhecido'));
   }
   function contrastModel(root, index) {
     const palette = [0x496b89, 0x987050, 0x587d74, 0x745f8e, 0x8b685f];
+    const replacements = new Map();
     root.traverse(child => {
       if (!child.isMesh) return;
       const tint = material => {
         if (!material?.color || material.map || material.vertexColors) return material;
         const channels = [material.color.r, material.color.g, material.color.b];
         if (Math.min(...channels) < .35 || Math.max(...channels) - Math.min(...channels) > .14) return material;
+        if (replacements.has(material)) return replacements.get(material);
         const replacement = material.clone();
         replacement.color.setHex(palette[index % palette.length]);
         if ('metalness' in replacement) replacement.metalness = .16;
         if ('roughness' in replacement) replacement.roughness = .57;
+        replacements.set(material, replacement);
         return replacement;
       };
       child.material = Array.isArray(child.material) ? child.material.map(tint) : tint(child.material);
     });
+    replacements.forEach((_replacement, original) => original.dispose());
   }
   async function compositeStage(target, assetId, parts, mode, positions, onPosition, onPart, editable, onHoverPart, onLeave) {
     disposePreview();
@@ -235,15 +241,26 @@
     target.append(viewport);
     const viewer = new ASTHAViewer3D(viewport.id, false);
     activeViewer = viewer;
+    const controller = new AbortController();
+    activePreviewCleanup = () => controller.abort();
+    const token = localStorage.getItem('astha_token'), apiOrigin = API.BASE_URL;
+    const stillCurrent = () => target.isConnected && activeViewer === viewer && !viewer.disposed &&
+      localStorage.getItem('astha_token') === token && API.BASE_URL === apiOrigin;
     viewer.modelGroup = new THREE.Group();
     viewer.scene.add(viewer.modelGroup);
     const modelGroup = new THREE.Group();
+    // Attach the loading group immediately so disposal owns already parsed parts.
+    viewer.modelGroup.add(modelGroup);
     const assembled = [];
     const results = await Promise.allSettled(parts.map(async (part, index) => {
       const ext = extension(part.filename);
       if (!modelExtensions.has(ext)) throw new Error('Formato 3D não renderizável');
-      const source = await fetchEamAttachment(assemblyUrl(assetId, part));
-      const mesh = await parseModel(await source.arrayBuffer(), ext);
+      const source = await fetchEamAttachment(assemblyUrl(assetId, part), {signal: controller.signal});
+      if (!stillCurrent()) return;
+      const buffer = await source.arrayBuffer();
+      if (!stillCurrent()) return;
+      const mesh = await parseModel(buffer, ext);
+      if (!stillCurrent()) { disposeViewerResources(mesh); return; }
       contrastModel(mesh, index);
       const origin = new THREE.Vector3(Number(part.tx) || 0, Number(part.ty) || 0, Number(part.tz) || 0);
       const explode = new THREE.Vector3(Number(part.explode_dx) || 0, Number(part.explode_dy) || 0, Number(part.explode_dz) || 0);
@@ -264,7 +281,7 @@
       assembled.push({ mesh, origin, explode, index });
       modelGroup.add(mesh);
     }));
-    if (!target.isConnected || activeViewer !== viewer) { viewer.dispose(); return; }
+    if (!stillCurrent()) { viewer.dispose(); return; }
     if (!assembled.length) { disposePreview(); return showError(target, results.find(result => result.status === 'rejected')?.reason?.message || 'Nenhuma parte 3D pôde ser carregada.'); }
     assembled.sort((a, b) => a.index - b.index);
     // Arquivos CAD podem estar em metros, milímetros ou polegadas. Um
@@ -305,6 +322,7 @@
       range.value = String(Math.round(progress * 100));
       percentage.textContent = `${range.value}%`;
       assembled.forEach(item => item.mesh.position.copy(item.origin).addScaledVector(item.explode, progress));
+      viewer.requestRender();
     };
     let animation = 0;
     range.addEventListener('input', () => { cancelAnimationFrame(animation); setSeparation(Number(range.value) / 100); });
@@ -370,6 +388,7 @@
       return { current: current?.userData.sourceKey ? current : null, hit, box };
     }
     function clearHover() {
+      const changed = originalMaterials.length > 0 || outline !== null;
       originalMaterials.forEach(([mesh, material]) => {
         (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach(item => item?.dispose());
         mesh.material = material;
@@ -380,6 +399,7 @@
       tooltip.hidden = true;
       canvas.style.cursor = '';
       onLeave?.();
+      if (changed) viewer.requestRender();
     }
     function showHover(current, event, box) {
       if (current !== hovered) {
@@ -401,6 +421,7 @@
         });
         outline = new THREE.BoxHelper(current, 0x1674df);
         viewer.scene.add(outline);
+        viewer.requestRender();
       }
       if (!current) return;
       outline?.update();
@@ -454,10 +475,12 @@
           drag.item.mesh.rotation.copy(drag.startRotation);
           drag.item.mesh.rotation[axis] += THREE.MathUtils.degToRad((event.clientX - drag.startX) * .55);
           outline?.update();
+          viewer.requestRender();
         } else if (drag.transformMode === 'scale') {
           const factor = Math.max(.0001, Math.min(1000000, drag.startScale * Math.exp((drag.startY - event.clientY) * .008)));
           drag.item.mesh.scale.setScalar(factor);
           outline?.update();
+          viewer.requestRender();
         } else {
           pick(event);
           const point = new THREE.Vector3();
@@ -551,6 +574,7 @@
       if (selected) selectInEditor(selected.mesh, null);
       requestedEditorPart = null;
     }
+    activePreviewCleanup = () => { controller.abort(); cancelAnimationFrame(animation); clearHover(); };
     if (results.some(result => result.status === 'rejected')) target.append(element('p', 'eam-visual-warning', 'Algumas partes não puderam ser carregadas; revise os modelos da montagem.'));
   }
   function positionAction(target, asset, position) {

@@ -89,7 +89,7 @@ async function finishRegistration() {
     }
     localStorage.setItem('astha_token', result.token);
     localStorage.setItem('astha_user', JSON.stringify(result.user));
-    sessionStorage.setItem('astha_onboarding_type', selectedType || 'corp');
+    sessionStorage.setItem(`astha_onboarding_type:${result.user.org_id || ''}:${result.user.id || ''}`, selectedType === 'personal' ? 'personal' : 'corporate');
     nextStep(4);
   } catch (_) {
     showToast('Não foi possível concluir o cadastro. Tente novamente.');

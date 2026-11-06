@@ -30,23 +30,24 @@ class AssetItem {
   });
 
   factory AssetItem.fromJson(Map<String, dynamic> json) => AssetItem(
-        id: toInt(json['id']),
-        code: toText(json['asset_code']) ?? '',
-        name: toText(json['name']) ?? '',
-        status: toText(json['status']) ?? 'active',
-        type: toText(json['asset_type']),
-        criticality: toText(json['criticality']),
-        location: toText(json['functional_location_name']) ?? toText(json['location']),
-        manufacturer: toText(json['manufacturer']),
-        model: toText(json['model']),
-        modelName: toText(json['model_name']),
-        serialNumber: toText(json['serial_number']),
-        description: toText(json['description']),
-        functionalLocationName: toText(json['functional_location_name']),
-        operatingHours: toDouble(json['operating_hours']),
-        operatingCycles: toDouble(json['operating_cycles']),
-        createdAt: toDate(json['created_at']),
-      );
+    id: toInt(json['id']),
+    code: toText(json['asset_code']) ?? '',
+    name: toText(json['name']) ?? '',
+    status: toText(json['status']) ?? 'active',
+    type: toText(json['asset_type']),
+    criticality: toText(json['criticality']),
+    location:
+        toText(json['functional_location_name']) ?? toText(json['location']),
+    manufacturer: toText(json['manufacturer']),
+    model: toText(json['model']),
+    modelName: toText(json['model_name']),
+    serialNumber: toText(json['serial_number']),
+    description: toText(json['description']),
+    functionalLocationName: toText(json['functional_location_name']),
+    operatingHours: toDouble(json['operating_hours']),
+    operatingCycles: toDouble(json['operating_cycles']),
+    createdAt: toDate(json['created_at']),
+  );
 
   final int id;
   final String code;
@@ -82,18 +83,18 @@ class WorkOrder {
   });
 
   factory WorkOrder.fromJson(Map<String, dynamic> json) => WorkOrder(
-        id: toInt(json['id']),
-        title: toText(json['title']) ?? '',
-        workOrderNumber: toText(json['work_order_number']),
-        assetCode: toText(json['asset_code']),
-        description: toText(json['description']),
-        status: toText(json['status']) ?? 'open',
-        priority: toText(json['priority']) ?? 'medium',
-        type: toText(json['type']) ?? 'corrective',
-        assetName: toText(json['asset_name']) ?? '',
-        dueAt: toDate(json['due_at']),
-        createdAt: toDate(json['created_at']),
-      );
+    id: toInt(json['id']),
+    title: toText(json['title']) ?? '',
+    workOrderNumber: toText(json['work_order_number']),
+    assetCode: toText(json['asset_code']),
+    description: toText(json['description']),
+    status: toText(json['status']) ?? 'open',
+    priority: toText(json['priority']) ?? 'medium',
+    type: toText(json['type']) ?? 'corrective',
+    assetName: toText(json['asset_name']) ?? '',
+    dueAt: toDate(json['due_at']),
+    createdAt: toDate(json['created_at']),
+  );
 
   final int id;
   final String title;
@@ -116,20 +117,42 @@ class PreventivePlan {
     required this.assetName,
     required this.title,
     this.frequencyDays,
+    this.intervalHours,
+    this.intervalCycles,
+    this.nextDueHours,
+    this.nextDueCycles,
     this.nextDueAt,
     this.status = 'active',
   });
 
   factory PreventivePlan.fromJson(Map<String, dynamic> json) => PreventivePlan(
-        id: toInt(json['id']),
-        assetId: toInt(json['asset_id']),
-        assetCode: toText(json['asset_code']) ?? '',
-        assetName: toText(json['asset_name']) ?? '',
-        title: toText(json['name']) ?? toText(json['title']) ?? 'Plano preventivo',
-        frequencyDays: json['frequency_days'] == null ? null : toInt(json['frequency_days']),
-        nextDueAt: toDate(json['next_due_at']),
-        status: toText(json['status']) ?? 'active',
-      );
+    id: toInt(json['id']),
+    assetId: toInt(json['asset_id']),
+    assetCode: toText(json['asset_code']) ?? '',
+    assetName: toText(json['asset_name']) ?? '',
+    title: toText(json['name']) ?? toText(json['title']) ?? 'Plano preventivo',
+    frequencyDays: (json['interval_days'] ?? json['frequency_days']) == null
+        ? null
+        : toInt(json['interval_days'] ?? json['frequency_days']),
+    intervalHours: json['interval_hours'] == null
+        ? null
+        : toDouble(json['interval_hours']),
+    intervalCycles: json['interval_cycles'] == null
+        ? null
+        : toDouble(json['interval_cycles']),
+    nextDueHours: json['next_due_hours'] == null
+        ? null
+        : toDouble(json['next_due_hours']),
+    nextDueCycles: json['next_due_cycles'] == null
+        ? null
+        : toDouble(json['next_due_cycles']),
+    nextDueAt: toDate(json['next_due_at']),
+    status: json.containsKey('active')
+        ? (json['active'] == true || toInt(json['active']) == 1
+              ? 'active'
+              : 'inactive')
+        : toText(json['status']) ?? 'active',
+  );
 
   final int id;
   final int assetId;
@@ -137,6 +160,10 @@ class PreventivePlan {
   final String assetName;
   final String title;
   final int? frequencyDays;
+  final double? intervalHours;
+  final double? intervalCycles;
+  final double? nextDueHours;
+  final double? nextDueCycles;
   final DateTime? nextDueAt;
   final String status;
 }
@@ -152,14 +179,17 @@ class ReliabilityAsset {
     this.mttrHours,
   });
 
-  factory ReliabilityAsset.fromJson(Map<String, dynamic> json) => ReliabilityAsset(
+  factory ReliabilityAsset.fromJson(Map<String, dynamic> json) =>
+      ReliabilityAsset(
         id: toInt(json['id']),
         code: toText(json['asset_code']) ?? '',
         name: toText(json['name']) ?? '',
         failures: toInt(json['failures']),
         downtimeHours: toDouble(json['downtime_hours']),
         calendarAvailability: toDouble(json['calendar_availability']),
-        mttrHours: json['mttr_hours'] == null ? null : toDouble(json['mttr_hours']),
+        mttrHours: json['mttr_hours'] == null
+            ? null
+            : toDouble(json['mttr_hours']),
       );
 
   final int id;

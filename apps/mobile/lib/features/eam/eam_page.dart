@@ -20,6 +20,7 @@ import '../../widgets/async_view.dart';
 import '../../widgets/cards.dart';
 import '../../widgets/dialogs.dart';
 import '../shared/labels.dart';
+import 'counter_reading_dialog.dart';
 
 // A tela principal com as 4 abas industriais :3
 class EamPage extends StatelessWidget {
@@ -64,27 +65,27 @@ class _WorkOrdersTab extends StatefulWidget {
   State<_WorkOrdersTab> createState() => _WorkOrdersTabState();
 }
 
-class _WorkOrdersTabState extends State<_WorkOrdersTab> with AutomaticKeepAliveClientMixin {
-  int _revision = 0;
-
+class _WorkOrdersTabState extends State<_WorkOrdersTab>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   Future<void> _create() async {
-    final created = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => const _WorkOrderSheet(),
     );
-    if (created == true && mounted) setState(() => _revision++);
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final repository = context.read<EamRepository>();
-    final canWrite = context.select<SessionController, bool>((s) => s.user?.canMove ?? false);
+    final canWrite = context.select<SessionController, bool>(
+      (s) => s.user?.canMove ?? false,
+    );
 
     return Column(
       children: [
@@ -102,16 +103,19 @@ class _WorkOrdersTabState extends State<_WorkOrdersTab> with AutomaticKeepAliveC
           ),
         Expanded(
           child: AsyncView<List<WorkOrder>>(
-            key: ValueKey(_revision),
+            revision: context.select<ApiClient, int>((api) => api.dataRevision),
             load: repository.workOrders,
             builder: (context, orders) {
-              if (orders.isEmpty) return const EmptyState(message: 'Nenhuma ordem de serviço.');
+              if (orders.isEmpty) {
+                return const EmptyState(message: 'Nenhuma ordem de serviço.');
+              }
               return ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 itemCount: orders.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) => _WorkOrderTile(order: orders[index]),
+                itemBuilder: (context, index) =>
+                    _WorkOrderTile(order: orders[index]),
               );
             },
           ),
@@ -140,7 +144,11 @@ class _WorkOrderTile extends StatelessWidget {
                 Expanded(
                   child: Text(
                     order.workOrderNumber ?? '#${order.id}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textMuted),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ),
                 StatusPill(
@@ -163,7 +171,10 @@ class _WorkOrderTile extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(4),
@@ -171,14 +182,22 @@ class _WorkOrderTile extends StatelessWidget {
                   ),
                   child: Text(
                     workTypeLabel(order.type),
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
-                    color: priorityColor(order.priority).withValues(alpha: 0.12),
+                    color: priorityColor(
+                      order.priority,
+                    ).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -194,7 +213,10 @@ class _WorkOrderTile extends StatelessWidget {
                 if (order.createdAt != null)
                   Text(
                     formatDate(order.createdAt),
-                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                    ),
                   ),
               ],
             ),
@@ -212,69 +234,25 @@ class _AssetsTab extends StatefulWidget {
   State<_AssetsTab> createState() => _AssetsTabState();
 }
 
-class _AssetsTabState extends State<_AssetsTab> with AutomaticKeepAliveClientMixin {
-  int _revision = 0;
-
+class _AssetsTabState extends State<_AssetsTab>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   Future<void> _recordCounter(AssetItem asset) async {
-    final hoursCtrl = TextEditingController(text: asset.operatingHours > 0 ? asset.operatingHours.toString() : '');
-    final cyclesCtrl = TextEditingController(text: asset.operatingCycles > 0 ? asset.operatingCycles.toString() : '');
-
-    final confirmed = await showDialog<bool>(
+    if (!(context.read<SessionController>().user?.canMove ?? false)) return;
+    await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Text('Leitura de medidores: ${asset.name}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: hoursCtrl,
-              decoration: const InputDecoration(labelText: 'Horímetro acumulado (horas)', hintText: 'Ex.: 1500.5'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: cyclesCtrl,
-              decoration: const InputDecoration(labelText: 'Ciclos acumulados', hintText: 'Ex.: 45000'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ],
+      barrierDismissible: false,
+      builder: (_) => CounterReadingDialog(
+        asset: asset,
+        onSave: (hours, cycles) => context.read<EamRepository>().recordCounter(
+          assetId: asset.id,
+          hours: hours,
+          cycles: cycles,
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogCtx).pop(false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              final hours = double.tryParse(hoursCtrl.text.trim());
-              final cycles = double.tryParse(cyclesCtrl.text.trim());
-              try {
-                await context.read<EamRepository>().recordCounter(
-                      assetId: asset.id,
-                      hours: hours,
-                      cycles: cycles,
-                    );
-                if (dialogCtx.mounted) Navigator.of(dialogCtx).pop(true);
-              } catch (e) {
-                if (dialogCtx.mounted) {
-                  ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                    SnackBar(content: Text('Falha ao registrar: $e'), backgroundColor: AppColors.danger),
-                  );
-                }
-              }
-            },
-            child: const Text('Salvar leitura'),
-          ),
-        ],
       ),
     );
-
-    hoursCtrl.dispose();
-    cyclesCtrl.dispose();
-
-    if (confirmed == true && mounted) {
-      setState(() => _revision++);
-    }
   }
 
   void _showAsset(BuildContext context, AssetItem asset) {
@@ -288,8 +266,17 @@ class _AssetsTabState extends State<_AssetsTab> with AutomaticKeepAliveClientMix
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(asset.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              Text(asset.code, style: const TextStyle(color: AppColors.textMuted)),
+              Text(
+                asset.name,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                asset.code,
+                style: const TextStyle(color: AppColors.textMuted),
+              ),
               const SizedBox(height: 12),
               StatusPill(
                 label: assetStatusLabel(asset.status),
@@ -299,28 +286,39 @@ class _AssetsTabState extends State<_AssetsTab> with AutomaticKeepAliveClientMix
               InfoRow(label: 'Tipo', value: asset.type),
               InfoRow(label: 'Criticidade', value: asset.criticality),
               InfoRow(label: 'Localização', value: asset.location),
-              InfoRow(label: 'Localização Funcional', value: asset.functionalLocationName),
+              InfoRow(
+                label: 'Localização Funcional',
+                value: asset.functionalLocationName,
+              ),
               InfoRow(label: 'Fabricante', value: asset.manufacturer),
               InfoRow(label: 'Modelo', value: asset.modelName ?? asset.model),
               InfoRow(label: 'Número de série', value: asset.serialNumber),
               if (asset.operatingHours > 0)
-                InfoRow(label: 'Horímetro atual', value: '${asset.operatingHours} h'),
+                InfoRow(
+                  label: 'Horímetro atual',
+                  value: '${asset.operatingHours} h',
+                ),
               if (asset.operatingCycles > 0)
-                InfoRow(label: 'Ciclos atuais', value: '${asset.operatingCycles}'),
-              if (asset.description != null && asset.description!.trim().isNotEmpty)
+                InfoRow(
+                  label: 'Ciclos atuais',
+                  value: '${asset.operatingCycles}',
+                ),
+              if (asset.description != null &&
+                  asset.description!.trim().isNotEmpty)
                 InfoRow(label: 'Descrição', value: asset.description),
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _recordCounter(asset);
-                  },
-                  icon: const Icon(Icons.speed, size: 18),
-                  label: const Text('REGISTRAR HORÍMETRO / CICLOS'),
+              if (context.read<SessionController>().user?.canMove ?? false)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _recordCounter(asset);
+                    },
+                    icon: const Icon(Icons.speed, size: 18),
+                    label: const Text('REGISTRAR HORÍMETRO / CICLOS'),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -333,10 +331,12 @@ class _AssetsTabState extends State<_AssetsTab> with AutomaticKeepAliveClientMix
     super.build(context);
     final repository = context.read<EamRepository>();
     return AsyncView<List<AssetItem>>(
-      key: ValueKey(_revision),
+      revision: context.select<ApiClient, int>((api) => api.dataRevision),
       load: repository.assets,
       builder: (context, assets) {
-        if (assets.isEmpty) return const EmptyState(message: 'Nenhum ativo cadastrado.');
+        if (assets.isEmpty) {
+          return const EmptyState(message: 'Nenhum ativo cadastrado.');
+        }
         return ListView.separated(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -346,12 +346,21 @@ class _AssetsTabState extends State<_AssetsTab> with AutomaticKeepAliveClientMix
             final asset = assets[index];
             return Card(
               child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 leading: const CircleAvatar(
                   backgroundColor: AppColors.surface,
-                  child: Icon(Icons.precision_manufacturing_outlined, color: AppColors.textMain),
+                  child: Icon(
+                    Icons.precision_manufacturing_outlined,
+                    color: AppColors.textMain,
+                  ),
                 ),
-                title: Text(asset.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                title: Text(
+                  asset.name,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: Text(
                   [
                     asset.code,
@@ -383,6 +392,7 @@ class _PreventivesTab extends StatelessWidget {
     final repository = context.read<EamRepository>();
 
     return AsyncView<List<PreventivePlan>>(
+      revision: context.select<ApiClient, int>((api) => api.dataRevision),
       load: repository.preventivePlans,
       builder: (context, plans) {
         if (plans.isEmpty) {
@@ -410,40 +420,53 @@ class _PreventivesTab extends StatelessWidget {
                         Expanded(
                           child: Text(
                             plan.title,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         StatusPill(
                           label: plan.status == 'active' ? 'Ativo' : 'Inativo',
-                          color: plan.status == 'active' ? AppColors.brand : AppColors.textMuted,
+                          color: plan.status == 'active'
+                              ? AppColors.brand
+                              : AppColors.textMuted,
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
                     Text(
                       'Equipamento: ${plan.assetName} (${plan.assetCode})',
-                      style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
                       children: [
-                        if (plan.frequencyDays != null) ...[
-                          const Icon(Icons.repeat, size: 14, color: AppColors.textMuted),
-                          const SizedBox(width: 4),
+                        if (plan.frequencyDays != null)
+                          Text('A cada ${plan.frequencyDays} dias'),
+                        if (plan.intervalHours != null)
                           Text(
-                            'A cada ${plan.frequencyDays} dias',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            'A cada ${formatQuantity(plan.intervalHours!)} h',
                           ),
-                          const SizedBox(width: 16),
-                        ],
-                        if (plan.nextDueAt != null) ...[
-                          const Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.textMuted),
-                          const SizedBox(width: 4),
+                        if (plan.intervalCycles != null)
                           Text(
-                            'Próxima: ${formatDate(plan.nextDueAt)}',
-                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                            'A cada ${formatQuantity(plan.intervalCycles!)} ciclos',
                           ),
-                        ],
+                        if (plan.nextDueAt != null)
+                          Text('Próxima: ${formatDate(plan.nextDueAt)}'),
+                        if (plan.nextDueHours != null)
+                          Text(
+                            'Próximo horímetro: ${formatQuantity(plan.nextDueHours!)} h',
+                          ),
+                        if (plan.nextDueCycles != null)
+                          Text(
+                            'Próximos ciclos: ${formatQuantity(plan.nextDueCycles!)}',
+                          ),
                       ],
                     ),
                   ],
@@ -465,6 +488,7 @@ class _ReliabilityTab extends StatelessWidget {
     final repository = context.read<EamRepository>();
 
     return AsyncView<List<ReliabilityAsset>>(
+      revision: context.select<ApiClient, int>((api) => api.dataRevision),
       load: repository.reliabilityAssets,
       builder: (context, assets) {
         if (assets.isEmpty) {
@@ -475,10 +499,15 @@ class _ReliabilityTab extends StatelessWidget {
         }
 
         final totalFailures = assets.fold(0, (sum, a) => sum + a.failures);
-        final totalDowntime = assets.fold(0.0, (sum, a) => sum + a.downtimeHours);
+        final totalDowntime = assets.fold(
+          0.0,
+          (sum, a) => sum + a.downtimeHours,
+        );
         final avgAvailability = assets.isEmpty
             ? 0.0
-            : (assets.fold(0.0, (sum, a) => sum + a.calendarAvailability) / assets.length) * 100;
+            : (assets.fold(0.0, (sum, a) => sum + a.calendarAvailability) /
+                      assets.length) *
+                  100;
 
         return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -493,10 +522,12 @@ class _ReliabilityTab extends StatelessWidget {
               childAspectRatio: 1.5,
               children: [
                 _buildMetricCard(
-                  title: 'Disponibilidade',
+                  title: 'Disp. de calendário',
                   value: '${avgAvailability.toStringAsFixed(1)}%',
-                  subtitle: 'Média de operação',
-                  color: avgAvailability >= 90 ? AppColors.brand : AppColors.warning,
+                  subtitle: 'Tempo sem parada registrada',
+                  color: avgAvailability >= 90
+                      ? AppColors.brand
+                      : AppColors.warning,
                   icon: Icons.check_circle_outline,
                 ),
                 _buildMetricCard(
@@ -514,9 +545,9 @@ class _ReliabilityTab extends StatelessWidget {
                   icon: Icons.access_time_outlined,
                 ),
                 _buildMetricCard(
-                  title: 'Ativos medidos',
+                  title: 'Ativos no período',
                   value: '${assets.length}',
-                  subtitle: 'Equipamentos monitorados',
+                  subtitle: 'Cadastro consultado',
                   color: AppColors.purple,
                   icon: Icons.precision_manufacturing_outlined,
                 ),
@@ -547,44 +578,70 @@ class _ReliabilityTab extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 a.name,
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
-                                color: (a.calendarAvailability >= 0.9 ? AppColors.brand : AppColors.warning)
-                                    .withValues(alpha: 0.12),
+                                color:
+                                    (a.calendarAvailability >= 0.9
+                                            ? AppColors.brand
+                                            : AppColors.warning)
+                                        .withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '${(a.calendarAvailability * 100).toStringAsFixed(1)}% disp.',
+                                '${(a.calendarAvailability * 100).toStringAsFixed(1)}% calendário',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 12,
-                                  color: a.calendarAvailability >= 0.9 ? AppColors.brand : AppColors.warning,
+                                  color: a.calendarAvailability >= 0.9
+                                      ? AppColors.brand
+                                      : AppColors.warning,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        Text(a.code, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                        Text(
+                          a.code,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
                         const SizedBox(height: 10),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               'Falhas: ${a.failures}',
-                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
                             ),
                             Text(
                               'Downtime: ${a.downtimeHours.toStringAsFixed(1)} h',
-                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
                             ),
                             if (a.mttrHours != null)
                               Text(
                                 'MTTR: ${a.mttrHours!.toStringAsFixed(1)} h',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                           ],
                         ),
@@ -623,16 +680,27 @@ class _ReliabilityTab extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMuted,
+                ),
               ),
               Icon(icon, size: 18, color: color),
             ],
           ),
           Text(
             value,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
           ),
-          Text(subtitle, style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+          ),
         ],
       ),
     );
@@ -652,7 +720,9 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
 
   final _title = TextEditingController();
   final _description = TextEditingController();
-  late final Future<List<AssetItem>> _assets = context.read<EamRepository>().assets();
+  late final Future<List<AssetItem>> _assets = context
+      .read<EamRepository>()
+      .assets();
 
   AssetItem? _asset;
   String _type = 'corrective';
@@ -680,7 +750,9 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
       await repository.createWorkOrder(
         assetId: asset.id,
         title: title,
-        description: _description.text.trim().isEmpty ? null : _description.text.trim(),
+        description: _description.text.trim().isEmpty
+            ? null
+            : _description.text.trim(),
         type: _type,
         priority: _priority,
       );
@@ -703,7 +775,10 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Nova ordem de serviço', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const Text(
+                'Nova ordem de serviço',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 16),
               FutureBuilder<List<AssetItem>>(
                 future: _assets,
@@ -713,7 +788,12 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
                     initialValue: _asset,
                     decoration: const InputDecoration(labelText: 'Ativo'),
                     items: items
-                        .map((a) => DropdownMenuItem(value: a, child: Text('${a.name} (${a.code})')))
+                        .map(
+                          (a) => DropdownMenuItem(
+                            value: a,
+                            child: Text('${a.name} (${a.code})'),
+                          ),
+                        )
                         .toList(),
                     onChanged: (value) => setState(() => _asset = value),
                   );
@@ -722,13 +802,17 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
               const SizedBox(height: 12),
               TextField(
                 controller: _title,
-                decoration: const InputDecoration(labelText: 'Título do serviço'),
+                decoration: const InputDecoration(
+                  labelText: 'Título do serviço',
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _description,
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Descrição (opcional)'),
+                decoration: const InputDecoration(
+                  labelText: 'Descrição (opcional)',
+                ),
               ),
               const SizedBox(height: 12),
               Row(
@@ -738,7 +822,12 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
                       initialValue: _type,
                       decoration: const InputDecoration(labelText: 'Tipo'),
                       items: _types
-                          .map((t) => DropdownMenuItem(value: t, child: Text(workTypeLabel(t))))
+                          .map(
+                            (t) => DropdownMenuItem(
+                              value: t,
+                              child: Text(workTypeLabel(t)),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => setState(() => _type = v!),
                     ),
@@ -747,9 +836,16 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: _priority,
-                      decoration: const InputDecoration(labelText: 'Prioridade'),
+                      decoration: const InputDecoration(
+                        labelText: 'Prioridade',
+                      ),
                       items: _priorities
-                          .map((p) => DropdownMenuItem(value: p, child: Text(priorityLabel(p))))
+                          .map(
+                            (p) => DropdownMenuItem(
+                              value: p,
+                              child: Text(priorityLabel(p)),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => setState(() => _priority = v!),
                     ),
@@ -763,7 +859,10 @@ class _WorkOrderSheetState extends State<_WorkOrderSheet> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text('CRIAR ORDEM'),
               ),

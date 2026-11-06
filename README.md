@@ -177,7 +177,13 @@ Consulte o [README do Mobile](apps/mobile/README.md) para os detalhes de conexã
 
 A documentação apresenta requisitos, modelagem de dados, casos de uso, arquitetura, interfaces e resultados. Na revisão técnica de **20 de outubro de 2026**, o TCC registra **208 arquivos JavaScript analisados e 394 testes aprovados em Windows**, relativos à versão e aos cenários examinados. Esses números são evidência histórica do trabalho, e não uma nova execução feita na atualização deste README.
 
-A aplicação Web/API é a referência de implementação e verificação descrita no documento. Desktop e Mobile têm avaliação própria por ambiente. A continuidade do projeto inclui consolidação dos contratos entre clientes, operação offline durável e sincronização, avaliações em dispositivos e ensaios de desempenho, acessibilidade, segurança e uso em campo.
+A aplicação Web/API é a referência de implementação compartilhada com o Desktop e o Mobile. O cliente Mobile nativo implementa cache e fila SQLite cifrados para as operações suportadas, com confirmação idempotente pela API e conflitos explícitos; Flutter Web e ações que exigem conexão têm limites próprios. A avaliação em aparelhos físicos, biometria, execução em segundo plano e uso industrial em campo permanece uma etapa distinta dos ensaios controlados.
+
+Na reconciliação de **6 de novembro de 2026**, a suíte canônica aprovou **464 testes** e a checagem examinou **420 arquivos JavaScript**. O ensaio com quatro empresas comprovou Web, Electron e repositórios Flutter reais consultando o mesmo saldo persistido, com isolamento entre empresas e atualização das tabelas abertas. Não são contagens universais nem somas de suítes sobrepostas.
+
+- [Release de correções e evidências do TCC](docs/quality/RELEASE_2026-11-06_TCC.md)
+- [Matriz dos 16 casos de uso](docs/quality/TCC_2026-11-05_TRACEABILITY.md)
+- [Alterações na cópia revisada do documento](docs/quality/TCC_2026-11-06_DOCUMENT_CHANGES.md)
 
 ## Autores e orientação
 
@@ -192,4 +198,5 @@ A aplicação Web/API é a referência de implementação e verificação descri
 ---
 
 Desenvolvido como Trabalho de Conclusão de Curso em Limeira, São Paulo.
+
 

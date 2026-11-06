@@ -10,6 +10,7 @@ let nextCode = 200;
 let currentInfoMaterial = null;
 let currentWarehouseId = Number(new URLSearchParams(window.location.search).get('warehouse')) || null;
 let appDataLoadVersion = 0;
+let appDataLoadsInFlight = 0;
 
 // No-op para compatibilidade retroativa
 function saveAll() {
@@ -84,6 +85,7 @@ async function selectWarehouse(id) {
 // ── Async Bootstrap Loader ──
 async function initAppData() {
   const loadVersion = ++appDataLoadVersion;
+  appDataLoadsInFlight++;
   try {
     // 0. Fetch Warehouse Tabs
     const tabsRes = await API.get('/warehouse/tabs');
@@ -166,7 +168,7 @@ async function initAppData() {
     if (loadVersion !== appDataLoadVersion) return;
     console.error('[BOOTSTRAP] Erro na inicialização:', err);
     showToast('Erro ao inicializar o banco de dados', 'error');
-  }
+  } finally { appDataLoadsInFlight--; }
 }
 
 function getStatus(m){
@@ -198,6 +200,7 @@ function switchTab(t,{render=true}={}){
   url.searchParams.set('tab',t);
   window.history.replaceState(null,'',url);
   window.AppSidebar?.synchronizeActiveNavigation?.();
+  window.dispatchEvent(new Event('astha-wms-view'));
   if(!render)return;
   if(t==='dashboard')renderDashboard();
   if(t==='estoque')renderStock();
@@ -413,7 +416,18 @@ async function createEamRevision(event){event.preventDefault();const effective=d
 function readEamVisualFile(file){return new Promise((resolve,reject)=>{if(!file||file.size>8*1024*1024)return reject(Error('Selecione um arquivo de até 8 MiB'));const reader=new FileReader();reader.onerror=()=>reject(Error('Não foi possível ler o arquivo'));reader.onload=()=>resolve(reader.result);reader.readAsDataURL(file);});}
 async function createEamVisual(event){event.preventDefault();try{const file=document.getElementById('eamVisualFile').files[0],data=await readEamVisualFile(file),assetId=Number(document.getElementById('eamVisualAsset').value),moduleId=Number(document.getElementById('eamVisualModule')?.value),result=await API.post(`/eam/assets/${assetId}/visuals`,{type:document.getElementById('eamVisualType').value,title:document.getElementById('eamVisualTitle').value,filename:file.name,file_data:data,module_id:moduleId||null});if(result.success){event.target.reset();showToast('Visual técnico registrado','success');window.EamVisualWorkspace?.refresh(assetId);}else showToast(result.error||'Não foi possível registrar visual','error');}catch(error){showToast(error.message||'Arquivo inválido','error');}}
 async function createEamDocument(event){event.preventDefault();try{const file=document.getElementById('eamDocumentFile').files[0],data=await readEamVisualFile(file),assetId=Number(document.getElementById('eamDocumentAsset').value),moduleId=Number(document.getElementById('eamDocumentModule')?.value),result=await API.post(`/eam/assets/${assetId}/documents`,{document_number:document.getElementById('eamDocumentNumber').value,title:document.getElementById('eamDocumentTitle').value,revision_code:document.getElementById('eamDocumentRevision').value,document_type:document.getElementById('eamDocumentType').value,filename:file.name,file_data:data,module_id:moduleId||null});if(result.success){event.target.reset();showToast('Documento técnico registrado','success');window.EamVisualWorkspace?.refresh(assetId);}else showToast(result.error||'Não foi possível registrar documento','error');}catch(error){showToast(error.message||'Arquivo inválido','error');}}
-async function fetchEamAttachment(url){const token=localStorage.getItem('astha_token'),response=await fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}});if(!response.ok)throw Error('Arquivo não disponível');return response.blob();}
+async function fetchEamAttachment(url,{signal}={}){
+ const token=localStorage.getItem('astha_token'),base=API.BASE_URL;
+ const target=new URL(url,location.href),api=new URL(base,location.href);
+ if(target.origin!==location.origin||api.origin!==location.origin||target.username||target.password||!target.pathname.startsWith(api.pathname.replace(/\/$/,'')+'/'))throw Error('Origem de arquivo não autorizada');
+ const current=()=>localStorage.getItem('astha_token')===token&&API.BASE_URL===base;
+ const response=await fetch(target.href,{headers:token?{Authorization:`Bearer ${token}`}:{},redirect:'error',signal});
+ if(!current())throw Error('A sessão mudou. Reabra o arquivo.');
+ if(!response.ok)throw Error('Arquivo não disponível');
+ const blob=await response.blob();
+ if(!current())throw Error('A sessão mudou. Reabra o arquivo.');
+ return blob;
+}
 function downloadEamBlob(blob,filename){const link=document.createElement('a'),objectUrl=URL.createObjectURL(blob);link.href=objectUrl;link.download=filename||'arquivo';link.style.display='none';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);}
 async function loadEamDocuments(assetId){const target=document.getElementById('eamTechnicalDocuments');if(!target||!Number.isSafeInteger(assetId)||assetId<1)return;target.replaceChildren(eamTwinCard('Documentos técnicos','Carregando…'));const result=await API.get(`/eam/assets/${assetId}/documents`);if(!result.success){target.replaceChildren(eamTwinCard('Documentos técnicos',result.error||'Indisponíveis'));return;}const documents=Array.isArray(result.data)?result.data:[];target.replaceChildren(...(documents.length?documents.map(document=>{const card=eamTwinCard(document.document_number||'Documento',`${document.title||'—'} · ${document.revision_code||'sem revisão'} · ${document.status||'draft'}`),button=document.createElement('button');button.type='button';button.className='btn btn-secondary btn-sm';button.textContent='Baixar revisão';button.disabled=!document.revision_id;button.addEventListener('click',async()=>{try{const blob=await fetchEamAttachment(`${API.BASE_URL}/eam/documents/${Number(document.id)}/revisions/${Number(document.revision_id)}/data`);downloadEamBlob(blob,document.filename);}catch(error){showToast(error.message,'error');}});card.appendChild(button);return card;}):[eamTwinCard('Documentos técnicos','Nenhum documento cadastrado')]));}
 async function openEamVisual(assetId,visual){const url=`${API.BASE_URL}/eam/assets/${assetId}/visuals/${Number(visual.id)}/data`,ext=(visual.filename||'').split('.').pop().toLowerCase();window.eamActiveVisual={assetId,visual};if(['stl','obj','gltf','glb','step','stp','iges','igs'].includes(ext)&&typeof open3DViewer==='function'){open3DViewer(url,ext,visual.title||visual.filename);return;}if(!['png','jpg','jpeg','webp'].includes(ext)){try{downloadEamBlob(await fetchEamAttachment(url),visual.filename);showToast('Download seguro iniciado','success');}catch(error){showToast(error.message,'error');}return;}const canvas=document.getElementById('eamVisualCanvas');if(!canvas)return;try{const blob=await fetchEamAttachment(url),objectUrl=URL.createObjectURL(blob),stage=document.createElement('div'),image=document.createElement('img'),hotspotResult=await API.get(`/eam/assets/${assetId}/visuals/${Number(visual.id)}/hotspots`),hotspots=hotspotResult.success&&Array.isArray(hotspotResult.data)?hotspotResult.data:[];canvas.replaceChildren();stage.style.cssText='position:relative;display:inline-block;max-width:100%;border:1px solid #d1d5db;background:#fff;cursor:crosshair';image.src=objectUrl;image.alt=visual.title||'Visual técnico';image.style.cssText='display:block;max-width:100%;max-height:560px;object-fit:contain';image.onload=()=>URL.revokeObjectURL(objectUrl);stage.addEventListener('click',event=>{if(event.target!==image)return;const rect=image.getBoundingClientRect(),x=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y=Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height));document.getElementById('eamHotspotAssetId').value=String(assetId);document.getElementById('eamHotspotVisualId').value=String(visual.id);document.getElementById('eamHotspotX').value=x.toFixed(4);document.getElementById('eamHotspotY').value=y.toFixed(4);showToast('Coordenada selecionada; informe o rótulo e salve o hotspot','info');});stage.appendChild(image);hotspots.forEach(hotspot=>{if(!Number.isFinite(Number(hotspot.x_normalized))||!Number.isFinite(Number(hotspot.y_normalized)))return;const marker=document.createElement('button');marker.type='button';marker.className='btn btn-primary btn-sm';marker.textContent=hotspot.callout_number||'•';marker.title=hotspot.label||'Hotspot';marker.style.cssText=`position:absolute;left:${Number(hotspot.x_normalized)*100}%;top:${Number(hotspot.y_normalized)*100}%;transform:translate(-50%,-50%);border-radius:999px;padding:2px 7px`;marker.addEventListener('click',event=>{event.stopPropagation();showToast(hotspot.label||'Hotspot sem descrição','info');});stage.appendChild(marker);});canvas.appendChild(stage);document.getElementById('eamHotspotAssetId').value=String(assetId);document.getElementById('eamHotspotVisualId').value=String(visual.id);}catch(error){canvas.replaceChildren(eamTwinCard('Visual técnico',error.message||'Não foi possível abrir o visual'));}}
@@ -626,9 +640,11 @@ function drawDonut(h,c,z){
   ctx.font='12px Inter,sans-serif';ctx.fillStyle='#64748b';ctx.fillText('Total',cx,cy+14);
 }
 
-function renderStock(filter=''){
+function renderStock(filter=document.getElementById('stockFilter')?.value||''){
   const canEdit=Auth.canEdit(),canDel=Auth.canEdit();
   const tbody=document.getElementById('stockTableBody');
+  const focused=document.activeElement?.closest('#stockTableBody button[data-action]');
+  const restoreFocus=focused?{code:focused.closest('tr')?.querySelector('.material-code')?.textContent,action:focused.dataset.action}:null;
   const filtered=filter?materials.filter(m=>(m.code+m.desc+m.brand+m.model+m.sector).toLowerCase().includes(filter.toLowerCase())):materials;
   tbody.innerHTML=filtered.map(m=>{
     const s=getStatus(m);
@@ -666,6 +682,11 @@ function renderStock(filter=''){
       button.addEventListener('click', actions[button.dataset.action]);
     });
   });
+  if(restoreFocus){
+    const row=Array.from(tbody.rows).find(item=>item.querySelector('.material-code')?.textContent===restoreFocus.code);
+    const target=row&&Array.from(row.querySelectorAll('button[data-action]')).find(button=>button.dataset.action===restoreFocus.action&&!button.disabled);
+    (target||document.getElementById('stockFilter'))?.focus({preventScroll:true});
+  }
 }
 
 window.showQRCode = function(code, desc) {
@@ -796,6 +817,30 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   loadOrgIdentity();
   await initAppData();
   switchTab(requestedTab);
+  if (window.WmsLiveStock) {
+    window.wmsLiveStock?.dispose();
+    window.wmsLiveStock = window.WmsLiveStock.create({
+      window, document,
+      context: () => { const user = Auth.getUser(); return {
+        token: localStorage.getItem('astha_token'), orgId: user?.org_id, userId: user?.id,
+        warehouseId: currentWarehouseId, loadVersion: appDataLoadVersion, revision: API._dataRevision,
+      }; },
+      visible: () => !document.hidden && !!document.getElementById('panel-estoque')?.classList.contains('active'),
+      blocked: () => appDataLoadsInFlight > 0 || !!document.querySelector('dialog[open], .eo-modal-overlay.active') ||
+        (!!document.activeElement?.closest('#stockTableBody') && document.activeElement.matches('input,textarea,select,[contenteditable="true"]')) || window.getSelection()?.isCollapsed === false,
+      read: scope => API.get('/materials?warehouse_id=' + encodeURIComponent(scope.warehouseId)),
+      publish: rows => { materials = rows.map(mapMaterialToFrontend); renderStock(); },
+      identityChanged: () => { materials = []; renderStock(); },
+      status: state => { const label = document.getElementById('stockLiveStatus'); if (!label) return;
+        label.dataset.state = state;
+        label.textContent = state === 'current' ? 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR') + ' · consulta automática a cada 5 s'
+          : state === 'unavailable' ? 'Sem confirmação recente do estoque. Tentando reconectar.'
+          : state === 'session-changed' ? 'Sessão alterada. Reabra esta tela para consultar o estoque.'
+          : 'Atualização automática pausada enquanto esta tela não está visível.';
+      },
+    });
+    window.wmsLiveStock.start();
+  }
   
   // Remove loader overlay if it exists
   const loader = document.getElementById('loadingOverlay');

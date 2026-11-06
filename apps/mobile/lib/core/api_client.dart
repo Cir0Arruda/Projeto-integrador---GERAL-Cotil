@@ -190,11 +190,13 @@ class ApiClient extends ChangeNotifier {
           body?['id'] != null &&
           decoded['id'] == body?['id'] &&
           decoded['confirmed'] == true;
-      final stockWrite =
+      final domainWrite =
           method != 'GET' &&
-          (path.startsWith('/api/materials') ||
-              path.startsWith('/api/movements/'));
-      if (confirmedSync || stockWrite) {
+          (path == '/api/materials' ||
+              path.startsWith('/api/materials/') ||
+              path.startsWith('/api/movements/') ||
+              path.startsWith('/api/eam/'));
+      if (confirmedSync || domainWrite) {
         // The server has committed. Cache failures must not turn it into a failed write.
         try {
           await offline?.invalidateReads();
@@ -203,6 +205,12 @@ class ApiClient extends ChangeNotifier {
           dataRevision++;
           notifyListeners();
         }
+      }
+      if (_closed || token != currentToken || _baseUrl != uri.origin) {
+        throw const ApiException(
+          'A sessão mudou durante a consulta.',
+          status: 401,
+        );
       }
       return decoded;
     }

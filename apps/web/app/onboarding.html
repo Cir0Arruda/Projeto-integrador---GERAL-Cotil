@@ -1127,10 +1127,22 @@
   const token = localStorage.getItem('astha_token');
   let currentStep = 1;
   let orgType = 'new';
-  let workspaceType = ['personal','corporate'].includes(sessionStorage.getItem('astha_onboarding_type')) ? sessionStorage.getItem('astha_onboarding_type') : null;
+  let workspaceType = null;
+  let onboardingTypeKey = null;
+  const onboardingSaves = new Set();
   let positions = [];
+  const removedPositionIds = new Set();
+  let nextPositionTempId = Date.now();
   let selectedColor = '#6366f1';
   let inviteCode = null;
+  const editedOnboardingFields = new Set();
+  for (const eventName of ['input', 'change']) document.addEventListener(eventName, event => {
+    if (event.target?.id) editedOnboardingFields.add(event.target.id);
+  });
+  function hydrateOnboardingField(id, value, onlyEmpty = false) {
+    const input = document.getElementById(id);
+    if (input && !editedOnboardingFields.has(id) && (!onlyEmpty || !input.value) && typeof value === 'string') input.value = value;
+  }
 
   const STEPS = [
     { label: 'Tipo de uso' },
@@ -1148,20 +1160,39 @@
   (async function validateSession() {
     try {
       const res = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+      assertOnboardingSession();
       if (!res.ok) {
+        if (res.status !== 401) throw new Error('Não foi possível conferir seus dados agora. Tente novamente quando a conexão voltar.');
         localStorage.removeItem('astha_token');
         localStorage.removeItem('astha_user');
         window.location.href = '/app/login.html';
         return;
       }
       const me = await res.json();
+      assertOnboardingSession();
       if (me.setup_done === true) { window.location.href = '/app/home.html'; return; }
+      onboardingTypeKey = `astha_onboarding_type:${me.org_id || ''}:${me.id || ''}`;
+      const storedType = sessionStorage.getItem(onboardingTypeKey);
+      if (!workspaceType && ['personal','corporate'].includes(storedType)) selectWorkspaceType(storedType);
+      else if (!workspaceType && me.workspace_type === 'personal') selectWorkspaceType('personal');
       initializeProfilePhoto(me,true);
       for (const [id, value] of [['obName', me.name], ['obSurname', me.surname], ['obPhone', me.phone]]) {
-        const input = document.getElementById(id); if (input && value) input.value = value;
+        hydrateOnboardingField(id, value);
       }
-      if (me.org_name && !/^Organiza(?:ção|Ã§Ã£o) de /i.test(me.org_name)) document.getElementById('obOrgName').value = me.org_name;
-    } catch(e) { /* Server unreachable — let continue */ }
+      if (me.org_name && !/^Organiza(?:ção|Ã§Ã£o) de /i.test(me.org_name)) hydrateOnboardingField('obOrgName', me.org_name);
+      const personal = me.workspace_type === 'personal' || workspaceType === 'personal';
+      const [organization, savedPositions] = await Promise.all([apiFetch('/org/me'), personal ? Promise.resolve([]) : apiFetch('/org/positions')]);
+      assertOnboardingSession();
+      for (const [id, key] of [['obOrgName','name'],['obCnpj','cnpj'],['obOrgEmail','email'],['obOrgPhone','phone'],['obCity','city'],['obState','state']]) {
+        hydrateOnboardingField(id, organization[key], true);
+      }
+      if (Array.isArray(savedPositions)) {
+        const persisted = new Map(savedPositions.filter(position => !removedPositionIds.has(Number(position.id))).map(position => [Number(position.id), {...position, tempId:Number(position.id)}]));
+        for (const position of positions) if (position.id && !removedPositionIds.has(Number(position.id))) persisted.set(Number(position.id), position);
+        positions = [...persisted.values(), ...positions.filter(position => !position.id)];
+        renderPositions();
+      }
+    } catch(e) { showAlert(e.message || 'Não foi possível recuperar os dados salvos agora.'); }
   })();
 
   // ── Build Sidebar Navigation ──────────────────────
@@ -1222,10 +1253,10 @@
     buildNav();
     if (workspaceType) selectWorkspaceType(workspaceType);
     initializeProfilePhoto(savedUser);
-    if (savedUser.name)     document.getElementById('obName').value = savedUser.name;
-    if (savedUser.surname)  document.getElementById('obSurname').value = savedUser.surname || '';
-    if (savedUser.phone) document.getElementById('obPhone').value = savedUser.phone;
-    if (savedUser.org_name && !/^Organiza(?:ção|Ã§Ã£o) de /i.test(savedUser.org_name)) document.getElementById('obOrgName').value = savedUser.org_name;
+    hydrateOnboardingField('obName', savedUser.name, true);
+    hydrateOnboardingField('obSurname', savedUser.surname, true);
+    hydrateOnboardingField('obPhone', savedUser.phone, true);
+    if (savedUser.org_name && !/^Organiza(?:ção|Ã§Ã£o) de /i.test(savedUser.org_name)) hydrateOnboardingField('obOrgName', savedUser.org_name, true);
   });
 
   // ── Step 2: Profile ───────────────────────────────
@@ -1235,6 +1266,7 @@
     const phone = document.getElementById('obPhone').value.trim();
     const position_label = document.getElementById('obPositionLabel').value.trim();
     if (!name) { showAlert('Por favor, insira seu nome.'); return; }
+    const done = beginOnboardingSave(2); if (!done) return;
     try {
       if (!workspaceType) { goStep(1); showAlert('Escolha Pessoal ou Corporativo primeiro.'); return; }
       if (profilePhotoLoading()) { showAlert('Aguarde a foto terminar de carregar.'); return; }
@@ -1244,6 +1276,7 @@
       localStorage.setItem('astha_user', JSON.stringify({ ...u, name, surname, ...photoChanges }));
       goStep(workspaceType==='personal'?4:3);
     } catch(e) { showAlert('Erro ao salvar perfil: ' + e.message); }
+    finally { done(); }
   }
 
   // ── Step 3: Org choice ────────────────────────────
@@ -1295,6 +1328,7 @@
   async function saveOrgData() {
     const name = document.getElementById('obOrgName').value.trim();
     if (!name) { showAlert(workspaceType === 'personal' ? 'Informe o nome do seu espaço.' : 'Informe o nome da empresa.'); return; }
+    const done = beginOnboardingSave(4); if (!done) return;
     try {
       await apiFetch('/org/me', 'PUT', {
         name,
@@ -1321,6 +1355,7 @@
       if (workspaceType === 'personal') { goStep(6); populateSummary(); }
       else goStep(5);
     } catch(e) { showAlert('Erro ao salvar dados da empresa: ' + e.message); }
+    finally { done(); }
   }
 
   // ── Step 5: Positions ─────────────────────────────
@@ -1335,16 +1370,22 @@
     const dept  = document.getElementById('posDept').value.trim();
     const level = parseInt(document.getElementById('posLevel').value);
     if (!name) { showAlert('Nome do cargo é obrigatório.'); return; }
-    positions.push({ name, department: dept, level, color: selectedColor, tempId: Date.now() });
+    positions.push({ name, department: dept, level, color: selectedColor, tempId: ++nextPositionTempId, request_key:crypto.randomUUID() });
     renderPositions();
     document.getElementById('posName').value = '';
     document.getElementById('posDept').value = '';
     hideAlert();
   }
 
-  function removePosition(tempId) {
-    positions = positions.filter(p => p.tempId !== tempId);
-    renderPositions();
+  async function removePosition(tempId) {
+    if (onboardingSaves.has(5)) return;
+    const position = positions.find(p => p.tempId === tempId);
+    try {
+      if (position?.id) await apiFetch('/org/positions/' + encodeURIComponent(position.id), 'DELETE');
+      if (position?.id) removedPositionIds.add(Number(position.id));
+      positions = positions.filter(p => p.tempId !== tempId);
+      renderPositions();
+    } catch (error) { showAlert('Não foi possível remover o cargo: ' + error.message); }
   }
 
   function renderPositions() {
@@ -1374,17 +1415,27 @@
   }
 
   async function savePositions() {
-    for (const pos of positions) {
-      try {
-        await apiFetch('/org/positions', 'POST', { name: pos.name, department: pos.department, level: pos.level, color: pos.color });
-      } catch(e) { console.warn('Erro ao criar cargo:', e); }
-    }
+    const done = beginOnboardingSave(5); if (!done) return;
     try {
-      const inv = await apiFetch('/org/invites', 'POST', { expires_hours: 168, role: 'viewer' });
-      inviteCode = inv.code;
-    } catch(e) { console.warn('Erro ao gerar convite:', e); }
-    goStep(6);
-    populateSummary();
+      for (const pos of positions) {
+        if (pos.id) continue;
+        const saved = await apiFetch('/org/positions', 'POST', { name: pos.name, department: pos.department, level: pos.level, color: pos.color, request_key:pos.request_key });
+        if (!Number.isSafeInteger(Number(saved.id)) || Number(saved.id) < 1) throw Error('O servidor não confirmou o cargo. Recarregue os registros antes de tentar novamente.');
+        pos.id = Number(saved.id);
+        // A late initial read may already contain a commit whose response was lost.
+        // Keep this draft's durable request key and collapse the authoritative ID.
+        positions = positions.filter(existing => existing === pos || Number(existing.id) !== pos.id);
+      }
+      renderPositions();
+      let warning = '';
+      if (!inviteCode) {
+        try { const inv = await apiFetch('/org/invites', 'POST', { expires_hours:168, role:'viewer' }); inviteCode = inv.code; }
+        catch (_) { warning = 'Cargos salvos. O convite não pôde ser gerado agora; você pode criá-lo nas configurações.'; }
+      }
+      goStep(6); populateSummary();
+      if (warning) showAlert(warning);
+    } catch(error) { showAlert('Não foi possível salvar todos os cargos: ' + error.message); }
+    finally { done(); }
   }
 
   // ── Step 6: Summary ───────────────────────────────
@@ -1418,20 +1469,36 @@
   }
 
   async function finishSetup() {
+    const done = beginOnboardingSave(6); if (!done) return;
     try {
       await apiFetch('/org/complete-setup', 'POST', {});
       window.location.href = '/app/home.html';
     } catch(e) { showAlert('Não foi possível concluir a configuração: ' + e.message); }
+    finally { done(); }
   }
 
   // ── Utilities ─────────────────────────────────────
+  function assertOnboardingSession() {
+    if (localStorage.getItem('astha_token') !== token) throw Error('A sessão mudou. Recarregue antes de continuar.');
+  }
+  function beginOnboardingSave(step) {
+    if (onboardingSaves.has(step)) return null;
+    onboardingSaves.add(step);
+    const container = document.getElementById('step' + step);
+    const buttons = [...container.querySelectorAll('button')].filter(button => !button.disabled);
+    buttons.forEach(button => { button.disabled = true; });
+    container.setAttribute('aria-busy','true');
+    return () => { onboardingSaves.delete(step); buttons.forEach(button => { button.disabled = false; }); container.removeAttribute('aria-busy'); };
+  }
   async function apiFetch(path, method = 'GET', body = null) {
+    assertOnboardingSession();
     const opts = { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token } };
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(API + path, opts);
+    assertOnboardingSession();
     const ct = res.headers.get('content-type') || '';
     if (!ct.includes('application/json')) {
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
         localStorage.removeItem('astha_token'); localStorage.removeItem('astha_user');
         window.location.href = '/app/login.html';
         throw new Error('Sessão expirada.');
@@ -1439,6 +1506,7 @@
       throw new Error('Servidor indisponível. Tente novamente em instantes.');
     }
     const data = await res.json();
+    assertOnboardingSession();
     if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
     return data;
   }

@@ -29,7 +29,7 @@ async function main() {
   assert.equal(body.database, 'connected');
   assert.equal(body.build, require(root + '/api/security/web-build').fingerprint(root + '/api'));
   const publicPaths = ['app/login.html', 'app/css/app-shell.css', 'app/js/api.js',
-    'app/js/sistema-3d-viewer.js', 'app/js/personal-3d.js', 'app/js/settings-org.js',
+    'app/js/sistema-3d-viewer.js', 'app/js/personal-3d.js', 'app/js/settings-org.js', 'app/js/wms-live-stock.js',
     'app/vendor/occt-import-js/occt-import-js.wasm'];
   for (const file of publicPaths) {
     phase = 'https:' + file;
@@ -43,6 +43,10 @@ async function main() {
     const response = await fetch('https://136.111.89.192' + file, {signal: AbortSignal.timeout(15000)});
     assert.ok([403, 404].includes(response.status), 'private source exposed');
   }
+  phase = 'protected:onboarding';
+  const protectedPage = await fetch('https://136.111.89.192/app/onboarding.html', {redirect:'manual', signal:AbortSignal.timeout(15000)});
+  assert.equal(protectedPage.status,302);
+  assert.equal(protectedPage.headers.get('location'),'/app/resolve.html?return=%2Fapp%2Fonboarding.html');
   for (const [origin, status] of [['http://localhost:7357', 204], ['http://localhost:7358', 403], ['https://example.invalid', 403]]) {
     phase = 'cors:' + origin;
     const response = await fetch('https://136.111.89.192/api/auth/login', {method: 'OPTIONS',

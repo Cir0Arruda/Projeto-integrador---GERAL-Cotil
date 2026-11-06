@@ -2,6 +2,8 @@
 
 Fontes ativas do Web app e da API Express/MySQL, base comum dos clientes Web, Electron e Flutter. A pasta `archive/` da raiz conserva versões históricas; esta pasta contém a implementação atual.
 
+[Patch integrado de 06/11/2026 e matriz do TCC](../../docs/quality/RELEASE_2026-11-06_TCC.md): onboarding idempotente, manutenção concorrente, montagem 3D e atualização do estoque entre clientes. A suíte publicada deste módulo aprovou 442 testes; a suíte do checkout canônico aprovou 464. Os relatórios distinguem testes locais, implantação e limites de aparelhos/provedores.
+
 ## Estrutura
 
 - `app/`: HTML, CSS, JavaScript, Three.js, imagens e bibliotecas do frontend.
@@ -37,5 +39,7 @@ Executa regressões de analytics, segurança e interface desse módulo. Os teste
 As integrações `npm run test:integration:stock`, `test:integration:sync`, `test:integration:analytics` e `test:integration:eam` criam um processo MySQL descartável próprio. Exigem os binários MySQL 8 no ambiente Windows de teste (ou `ASTHA_TEST_MYSQL_BIN`) e não leem o banco configurado da aplicação. Não são parte de `npm test`. Para EAM, use o wrapper isolado; os três arquivos legados de rollback são chamados somente por ele.
 
 Os relatórios das duas rodadas de auditoria ficam em `../../docs/quality/`. Logs, capturas temporárias, arquivos de ambiente, bancos e dependências não são conteúdo para publicar.
+
+Os harnesses adicionais do TCC estão em `tests/integration/tcc-*.cjs` e `eam-multitenant-workflow.cjs`. A simulação intercliente usa `tcc-app-sandbox.cjs` em loopback 3001, com quatro empresas e 25 identidades, e exige Electron, Flutter e Playwright. As demais integrações indicadas no patch criam seu próprio MySQL descartável. Anexos 3D exigem os arquivos oficiais previamente baixados e conferidos. Consulte os pré-requisitos no relatório antes de executar; esses cenários não integram `npm test` e não devem apontar para produção.
 
 A release está ativa na VPS com banco próprio. [Implantação e backup automático de 05/11](../../docs/operations/DEPLOYMENT_2026-11-05.md) registra hashes, testes externos, restauração e recuperação. Ferramentas administrativas ficam em `deploy/vm`, `api/tools` e `scripts/maintenance`; não as execute como migração de rotina nem sobre outro banco. `tests/manual/deployment-ui.py` cria/removerá somente seus tenants de teste na VPS explicitamente configurada, exigindo SSH administrativo.

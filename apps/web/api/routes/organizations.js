@@ -205,30 +205,40 @@ router.post('/positions', async (req, res) => {
   if (!['superadmin', 'admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Sem permissão para criar cargos' });
   }
+  let connection;
   try {
-    const { name, department, level, color, permissions } = req.body;
-    if (!name) return res.status(400).json({ error: 'Nome do cargo é obrigatório' });
-
-    const [result] = await pool.execute(
+    const { name, department, level, color, permissions, request_key } = req.body;
+    if (typeof name!=='string'||!name.trim()||name.length>100) return res.status(400).json({ error:'Nome do cargo é obrigatório (até 100 caracteres)' });
+    if (request_key!==undefined&&(typeof request_key!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(request_key))) return res.status(400).json({error:'Identificador de gravação inválido.'});
+    const payload={name,department:department||null,level:level||3,color:color||'#4A6CF7',permissions:permissions||{can_view:true,can_edit:false,can_delete:false,can_manage_users:false}};
+    const digest=crypto.createHash('sha256').update(JSON.stringify({path:'/api/org/positions',payload})).digest('hex');
+    connection=await pool.getConnection();
+    await connection.beginTransaction();
+    const [members]=await connection.execute('SELECT role FROM users WHERE id=? AND BINARY org_id=BINARY ? AND is_active=1 FOR UPDATE',[req.user.id,req.user.org_id]);
+    if(!members.length||!['admin','superadmin'].includes(members[0].role))throw Object.assign(Error('Sem permissão para criar cargos'),{status:403});
+    if(request_key){
+      await connection.execute('INSERT INTO mobile_sync_receipts (org_id,user_id,operation_id,request_hash) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE operation_id=operation_id',[req.user.org_id,req.user.id,request_key.toLowerCase(),digest]);
+      const [receipts]=await connection.execute('SELECT request_hash,status_code,result_json FROM mobile_sync_receipts WHERE org_id=? AND user_id=? AND operation_id=? FOR UPDATE',[req.user.org_id,req.user.id,request_key.toLowerCase()]);
+      if(receipts[0].request_hash!==digest)throw Object.assign(Error('Identificador já usado por outra gravação.'),{status:409});
+      if(receipts[0].status_code){await connection.commit();return res.status(receipts[0].status_code).json(JSON.parse(receipts[0].result_json));}
+    }
+    const [result] = await connection.execute(
       `INSERT INTO org_positions (org_id, name, department, level, color, permissions)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         req.user.org_id,
-        name,
-        department || null,
-        level || 3,
-        color || '#4A6CF7',
-        permissions ? JSON.stringify(permissions) : JSON.stringify({
-          can_view: true, can_edit: false, can_delete: false, can_manage_users: false
-        })
+        payload.name,payload.department,payload.level,payload.color,JSON.stringify(payload.permissions)
       ]
     );
-    const [newPos] = await pool.execute('SELECT * FROM org_positions WHERE id = ?', [result.insertId]);
+    const [newPos] = await connection.execute('SELECT * FROM org_positions WHERE id = ? AND org_id=?', [result.insertId,req.user.org_id]);
+    if(request_key)await connection.execute('UPDATE mobile_sync_receipts SET status_code=201,result_json=? WHERE org_id=? AND user_id=? AND operation_id=?',[JSON.stringify(newPos[0]),req.user.org_id,req.user.id,request_key.toLowerCase()]);
+    await connection.commit();
     res.status(201).json(newPos[0]);
   } catch (err) {
+    if(connection)await require('../database/request-connection').rollbackConnection(connection);
     safeErrorLog('POST /org/positions error:', err);
-    res.status(500).json({ error: 'Erro ao criar cargo' });
-  }
+    res.status(err.status||503).json({ error:err.status?err.message:'Não foi possível criar o cargo agora. Tente novamente.' });
+  } finally { connection?.release(); }
 });
 
 // PUT /api/org/positions/:id — editar cargo

@@ -1,5 +1,15 @@
 const path = require('node:path');
 const MAX_BYTES = 10 * 1024 * 1024;
+// A repeated four-character group can exhaust V8's regexp backtracking stack
+// for valid multi-megabyte CAD/glTF payloads. Keep the scan flat and bounded.
+function validBase64(value) {
+  return value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
+}
+function embeddedResource(uri) {
+  if (typeof uri !== 'string') return false;
+  const prefix = /^data:(?:application\/(?:octet-stream|gltf-buffer)|image\/(?:png|jpeg|webp));base64,/.exec(uri);
+  return Boolean(prefix) && validBase64(uri.slice(prefix[0].length));
+}
 function selfContainedGltf(data) {
   if (!data || data.asset?.version !== '2.0') return false;
   const resources = [];
@@ -8,8 +18,7 @@ function selfContainedGltf(data) {
     resources.push(...(data[key] || []));
   }
   return resources.every(resource => resource && typeof resource === 'object' && !Array.isArray(resource) &&
-    (resource.uri === undefined || (typeof resource.uri === 'string' &&
-      /^data:(?:application\/(?:octet-stream|gltf-buffer)|image\/(?:png|jpeg|webp));base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(resource.uri))));
+    (resource.uri === undefined || embeddedResource(resource.uri)));
 }
 function selfContainedGlb(buf) {
   if (buf.length < 20 || buf.toString('ascii', 0, 4) !== 'glTF' ||
@@ -45,7 +54,7 @@ function validateAttachment(input) {
   }
   if (typeof file_data !== 'string' || file_data.length > Math.ceil(MAX_BYTES / 3) * 4 + 200) throw Error('Arquivo excede limite');
   const raw = file_data.startsWith('data:') ? file_data.slice(file_data.indexOf(',') + 1) : file_data;
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(raw)) throw Error('Base64 inválido');
+  if (!validBase64(raw)) throw Error('Base64 inválido');
   const buf = Buffer.from(raw, 'base64');
   if (!buf.length || buf.length > MAX_BYTES) throw Error('Tamanho inválido');
   const ext = path.extname(filename).toLowerCase();

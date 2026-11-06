@@ -12,6 +12,9 @@ async function main(){
     const [created]=await db.execute('INSERT INTO users(name,email,password_hash,role,org_id,is_active) VALUES(?,?,?,?,?,1)',['Temporary VPS validation',email,await load('bcryptjs').hash(password,12),'admin',org]);userId=created.insertId;
     const login=await request('POST','/api/auth/login',{email,password});assert.equal(login.status,200);assert.ok(login.data.token);
     const token=login.data.token,me=await request('GET','/api/auth/me',null,token);assert.equal(me.status,200);
+    const onboarding=await fetch('https://136.111.89.192/app/onboarding.html',{headers:{Cookie:'astha_page_session='+encodeURIComponent(token)},redirect:'error',signal:AbortSignal.timeout(15000)});
+    assert.equal(onboarding.status,200);
+    assert.deepEqual(Buffer.from(await onboarding.arrayBuffer()),await require('node:fs/promises').readFile('/opt/astha/releases/current/app/onboarding.html'));
     assert.equal((await request('GET','/api/materials')).status,401);
     const materials=await request('GET','/api/materials',null,token);assert.equal(materials.status,200);assert.deepEqual(materials.data,[]);
     const endpoints=['/api/org/me','/api/org/units','/api/workspace/context','/api/account','/api/account/sessions','/api/warehouse/tabs','/api/warehouse/branches','/api/warehouse/insights','/api/eam/assets','/api/eam/work-orders','/api/eam/plans','/api/eam/reliability/summary','/api/procurement/suppliers','/api/procurement/planning/mrp','/api/components','/api/analytics/catalog','/api/analytics/studies'];
@@ -42,7 +45,7 @@ async function main(){
     const env=load('dotenv').parse(await require('node:fs/promises').readFile('/etc/astha/runtime.env'));
     const runtime=await load('mysql2/promise').createConnection({host:env.DB_HOST,user:env.DB_USER,password:env.DB_PASSWORD,database:env.DB_NAME});
     try{await assert.rejects(runtime.query('CREATE TABLE __astha_ddl_guard(id INT)'),e=>['ER_TABLEACCESS_DENIED_ERROR','ER_DBACCESS_DENIED_ERROR'].includes(e.code));await assert.rejects(runtime.query('UPDATE analytics_snapshots SET id=id WHERE 1=0'),e=>e.code==='ER_TABLEACCESS_DENIED_ERROR');}finally{await runtime.end();}
-    console.log(JSON.stringify({status:'VPS_SMOKE_PASSED',login:true,authenticatedGetEndpoints:endpoints.length,stockWrites:true,monetaryValue:true,qrWithdrawal:true,idempotentSync:true,personalSpace:true,sessionRevocation:true,tenantIsolation:true,personalBoundary:true,runtimeDDL:false,immutableEvidenceProtected:true}));
+    console.log(JSON.stringify({status:'VPS_SMOKE_PASSED',login:true,onboardingHtml:true,authenticatedGetEndpoints:endpoints.length,stockWrites:true,monetaryValue:true,qrWithdrawal:true,idempotentSync:true,personalSpace:true,sessionRevocation:true,tenantIsolation:true,personalBoundary:true,runtimeDDL:false,immutableEvidenceProtected:true}));
   }finally{
     if(userId){await db.beginTransaction();try{
       await db.execute('DELETE FROM mobile_sync_receipts WHERE org_id=? AND user_id=?',[org,userId]);

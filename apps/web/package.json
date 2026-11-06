@@ -15,6 +15,7 @@
     "test:integration:stock": "node tests/integration/stock-movements-real-mysql.cjs",
     "test:integration:sync": "node tests/integration/mobile-sync-real-mysql.cjs",
     "test:integration:analytics": "node tests/integration/analytics-real-mysql.js",
-    "test:integration:eam": "node tests/integration/eam-isolated.cjs"
+    "test:integration:eam": "node tests/integration/eam-isolated.cjs",
+    "test:integration:cad": "node --test tests/integration/eam-cad-engine.test.cjs"
   }
 }
