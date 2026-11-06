@@ -16,6 +16,9 @@ jobs:
   ios-simulator:
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      # workmanager_apple references iOS 26 symbols; the runner's default is 16.4.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
