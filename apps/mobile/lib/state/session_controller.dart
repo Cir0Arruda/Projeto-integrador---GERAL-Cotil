@@ -228,6 +228,8 @@ class SessionController extends ChangeNotifier {
       } catch (_) {
         _notice =
             'Os registros offline estão ativos. A sincronização automática em segundo plano não pôde ser agendada.';
+        controller.notice = _notice;
+        await controller.refresh();
       }
       return true;
     } catch (_) {

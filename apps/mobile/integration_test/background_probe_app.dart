@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
+import 'package:workmanager/workmanager.dart';
 import 'package:astha_app/core/background_sync.dart';
 import 'package:astha_app/core/session_store.dart';
 import 'package:astha_app/main.dart' as app;
@@ -16,5 +17,14 @@ Future<void> main() async {
   await SessionStore().clearToken();
   await app.main();
   await BackgroundSync.schedule();
+  // Exercise the same dispatcher after a cold process start without forcing
+  // a periodic job before WorkManager's own next-run eligibility time.
+  await Workmanager().registerOneOffTask(
+    '$backgroundSyncTask.nativeProbe',
+    backgroundSyncTask,
+    initialDelay: const Duration(seconds: 45),
+    existingWorkPolicy: ExistingWorkPolicy.replace,
+    constraints: Constraints(networkType: NetworkType.connected),
+  );
   await prefs.setBool('qa_background_scheduled', true);
 }
