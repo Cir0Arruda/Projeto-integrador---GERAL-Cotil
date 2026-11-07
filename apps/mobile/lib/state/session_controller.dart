@@ -237,6 +237,9 @@ class SessionController extends ChangeNotifier {
     _notice = null;
     try {
       await _syncWorkspaceContext();
+      // OAuth returns a minimal identity. Resume the saved profile rather than
+      // replacing an unfinished signup's surname/phone/country with blanks.
+      if (needsSetup) _user = await _account.me();
       _setupPreference =
           needsSetup && ['personal', 'corporate'].contains(setupPreference)
           ? setupPreference

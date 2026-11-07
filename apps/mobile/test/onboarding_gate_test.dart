@@ -97,6 +97,15 @@ class SignupFixture {
     int status = 200;
     switch (r.url.path) {
       case '/api/auth/oauth/google':
+        data = {
+          'token': 'synthetic-session',
+          'user': {
+            for (final field in ['id', 'name', 'email', 'role', 'org_id'])
+              field: profile[field],
+            'setup_done': setup,
+          },
+        };
+        break;
       case '/api/auth/register':
         data = {
           'token': 'synthetic-session',
@@ -222,6 +231,32 @@ void main() {
         isEmpty,
       );
       expect(f.store.remembered, 0);
+      await close(tester, f);
+    },
+  );
+  testWidgets(
+    'pending Google signup restores the full profile omitted by its provider response',
+    (tester) async {
+      final f = SignupFixture();
+      f.profile.addAll({
+        'surname': 'Saved surname',
+        'phone': '11999990000',
+        'country': 'Brasil',
+      });
+      await f.google();
+      await tester.pumpWidget(wizard(f));
+      await flush(tester);
+      await click(tester, 'Pessoal');
+      await click(tester, 'Continuar');
+      final values = tester
+          .widgetList<TextFormField>(find.byType(TextFormField))
+          .map((field) => field.controller?.text)
+          .toList();
+      expect(
+        values,
+        containsAll(['Ana', 'Saved surname', '11999990000', 'Brasil']),
+      );
+      expect(f.calls.where((c) => c.method == 'PUT'), isEmpty);
       await close(tester, f);
     },
   );
