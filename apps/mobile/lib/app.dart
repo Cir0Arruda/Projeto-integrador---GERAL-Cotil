@@ -11,6 +11,7 @@ import 'core/api_client.dart';
 import 'core/theme.dart';
 import 'widgets/offline_shell.dart';
 import 'features/auth/login_page.dart';
+import 'features/auth/onboarding_page.dart';
 import 'features/home/home_shell.dart';
 import 'features/personal/personal_shell.dart';
 import 'repositories/account_repository.dart';
@@ -75,6 +76,9 @@ class _SessionGate extends StatelessWidget {
     final isPersonal = context.select<SessionController, bool>(
       (s) => s.isPersonal,
     );
+    final needsSetup = context.select<SessionController, bool>(
+      (s) => s.needsSetup,
+    );
 
     // Avalia a situação do login do usuário :3
     return switch (status) {
@@ -86,7 +90,11 @@ class _SessionGate extends StatelessWidget {
       SessionStatus.signedOut => const LoginPage(),
       // Logadíssimo com sucesso! Se tiver no modo pessoal abre o PersonalShell, se não, abre o WMS completo! ヽ(>∀<☆)ノ
       SessionStatus.signedIn =>
-        isPersonal ? const PersonalShell() : const HomeShell(),
+        needsSetup
+            ? const OnboardingPage()
+            : isPersonal
+            ? const PersonalShell()
+            : const HomeShell(),
     };
   }
 }

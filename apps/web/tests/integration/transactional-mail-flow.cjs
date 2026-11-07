@@ -70,6 +70,15 @@ async function main(){
   const rejected=await request('/org/invites',owner,'POST',{email:'recipient@example.invalid',role:'viewer'},201);sink.setReject(true);
   await request('/org/invites/'+rejected.id+'/email',owner,'POST',{},503);
   const [[retained]]=await app.pool.execute('SELECT COUNT(*) AS n FROM org_invites WHERE id=? AND used_at IS NULL',[rejected.id]);assert.equal(retained.n,1);
+  phase='read-only-mail-schema-deployment-gate';
+  const {validateMailSchema}=require('../../api/security/production-config');
+  assert.equal(await validateMailSchema(app.pool,{MAIL_ENABLED:'true'}),true);
+  // Alter only this disposable fixture to reproduce an older incompatible schema.
+  await app.admin.query('ALTER TABLE password_resets RENAME COLUMN created_at TO qa_created_at');
+  await assert.rejects(()=>validateMailSchema(app.pool,{MAIL_ENABLED:'true'}),/MAIL_SCHEMA_UNAVAILABLE/);
+  assert.equal(await validateMailSchema(app.pool,{MAIL_ENABLED:'false'}),false);
+  await app.admin.query('ALTER TABLE password_resets RENAME COLUMN qa_created_at TO created_at');
+  assert.equal(await validateMailSchema(app.pool,{MAIL_ENABLED:'true'}),true);
   console.log('TRANSACTIONAL_MAIL_SQL_HTTP_SMTP_PASSED (owned local sink only; external delivery not tested)');
  }catch(error){console.error('TRANSACTIONAL_MAIL_FLOW_FAILED',phase,/^[A-Z0-9_]+$/.test(error.code||'')?error.code:'VALIDATION_FAILED');if(error.message?.startsWith('Unexpected HTTP status'))console.error(error.message.slice(0,250));process.exitCode=1;}
  finally{await mail.close();if(app)await app.close();await sink.close();}

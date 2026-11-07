@@ -18,6 +18,10 @@ Reinicie a API após configurar. Credenciais nunca vão ao Flutter, ao navegador
 
 `GET /api/account/recovery-options` retorna apenas `emailRecoveryAvailable`; isso indica configuração válida, sem comprovar conexão ao SMTP ou chegada à caixa de entrada.
 
+Na inicialização de produção, `MAIL_ENABLED=true` exige configuração SMTP válida (`MAIL_CONFIG_INVALID` em caso de recusa). Antes de abrir a porta HTTP, a API também verifica, somente por leitura, as colunas necessárias de `password_resets`, incluindo `created_at`; schema incompatível impede a partida com `MAIL_SCHEMA_UNAVAILABLE`, sem expor o erro SQL. SMTP desativado não exige essa verificação adicional. Não há migração automática nessa etapa: prepare e revise a alteração em ambiente isolado antes de planejar uma atualização do banco real.
+
+O pacote de fontes pode ser conferido sem instalar ou ativar nada: `python tests/integration/vm-package-preflight.py <arquivo.tar.gz> --release <identificador> --source-root <fontes>`. O verificador compara checksum, lista de arquivos, hashes das fontes e dependências locais literais; gera um manifesto e não extrai o arquivo, conecta ao banco ou envia e-mail. Essa conferência não comprova implantação nem substitui assinatura do artefato.
+
 ## Recuperar acesso
 
 Web/Desktop: **Esqueceu a senha? → Recuperar acesso**. Flutter: o mesmo botão abre uma tela nativa.

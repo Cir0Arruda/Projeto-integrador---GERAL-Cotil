@@ -46,6 +46,10 @@ Após atualizar dependências/plugins nativos, encerre a execução anterior e i
 
 ## Google no Chrome/Edge
 
+Contas ainda sem configuração inicial abrem **Concluir cadastro** após o login, inclusive quando a API retorna o tipo pessoal como padrão provisório. O usuário escolhe Pessoal/Corporativo, confere o perfil e o nome do espaço e confirma o resumo. A conta autenticada é reutilizada; não há um segundo cadastro nem conversão silenciosa de uma organização já configurada. Quem recebeu um convite pode usá-lo nessa etapa; a nova sessão retornada pela API substitui a anterior antes de carregar a equipe.
+
+Fechar ou atualizar a página não conclui o cadastro. O estado `setupDone` da API decide se o formulário deve reaparecer. Cadastros incompletos não habilitam a fila offline; identidades offline antigas cifradas continuam compatíveis e são conferidas novamente quando há conexão. Falhas no salvamento mantêm o formulário para tentar novamente. As etapas usam endpoints existentes, sem migração de dados para esta correção.
+
 O login usa Google Identity Services e o Client ID público configurado na API. Autorize `http://localhost` e `http://localhost:7357` em **Origens JavaScript autorizadas** do mesmo cliente OAuth do servidor. Não é necessário Client Secret para validar o ID token deste fluxo. A API verifica assinatura, audiência e nonce; a tela não solicita JWT manual.
 
 O ícone `assets/google-g.png` é o arquivo oficial, com proporção fixa, distribuído localmente. Depois da atualização de assets, reinicie a execução Flutter. A homologação de entrada na conta Google depende da seleção/consentimento do próprio usuário; não foi simulada com credenciais inventadas.

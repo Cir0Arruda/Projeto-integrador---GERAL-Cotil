@@ -24,7 +24,7 @@ class GoogleSignInButton extends StatefulWidget {
 
   // Se for true, muda o textinho pra "Criar conta com Google" em vez de "Continuar..."
   final bool isSignUp;
-  // Se for pra ir direto pro workspace pessoal (modo usuário comum) :3
+  // Prefills a pending signup choice; never changes an existing workspace.
   final String? targetWorkspace;
 
   @override
@@ -127,10 +127,12 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
       try {
         // Dispara a chamada da API POST /api/auth/oauth/google enviando o token JWT do Google!
         // O servidor valida a assinatura com os servidores do Google e cria nossa sessão (｡•̀ᴗ-)✧
-        await session.signInWithGoogle(credential: credential, nonce: nonce);
-        if (widget.targetWorkspace == 'personal' && mounted) {
-          await session.setWorkspaceMode('personal');
-        }
+        await session.signInWithGoogle(
+          credential: credential,
+          nonce: nonce,
+          targetWorkspace: widget.targetWorkspace,
+        );
+        if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
       } on ApiException catch (e) {
         // Se a API recusar o token (por exemplo se tiver expirado ou nonce inválido) (TwT)
         if (mounted) showToast(context, e.message, error: true);
