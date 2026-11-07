@@ -129,16 +129,10 @@ class _RegisterPageState extends State<RegisterPage> {
         if (_country.text.isNotEmpty) 'country': _country.text.trim(),
         if (_phone.text.isNotEmpty) 'phone': _phone.text.trim(),
         if (_invite.text.isNotEmpty) 'invite_code': _invite.text.trim(),
-      });
-
-      // Se escolheu conta pessoal, salva a preferência pro app abrir no modo pessoal :3
-      if (_selectedType == 'personal') {
-        try {
-          await session.setWorkspaceMode('personal');
-        } catch (_) {}
-      }
+      }, targetWorkspace: _selectedType);
 
       // Vai pro passo 4: Tela de celebração e boas-vindas! ヽ(>∀<☆)ノ
+      if (!mounted) return;
       setState(() {
         _currentStep = 4;
       });
@@ -551,9 +545,7 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          _selectedType == 'personal'
-              ? 'Seu workspace pessoal foi iniciado. Você já pode organizar seus espaços e pertences.'
-              : 'Agora vamos concluir a configuração do seu workspace corporativo.',
+          'Agora vamos confirmar seus dados e concluir a configuração do workspace.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: AppColors.textMuted, fontSize: 14),
         ),
@@ -562,7 +554,7 @@ class _RegisterPageState extends State<RegisterPage> {
           onPressed: () {
             Navigator.of(context).popUntil((route) => route.isFirst);
           },
-          child: const Text('ACESSAR WORKSPACE'),
+          child: const Text('CONTINUAR CADASTRO'),
         ),
       ],
     );

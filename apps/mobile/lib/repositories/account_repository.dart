@@ -71,8 +71,42 @@ class AccountRepository {
 
   // API: POST /api/org/complete-setup
   // Finaliza a configuração inicial da organização quando a conta é nova (*¯︶¯*)
-  Future<void> completeSetup({required String name}) =>
-      _api.post('/api/org/complete-setup', {'name': name});
+  Future<void> completeSetup() =>
+      _api.remote('POST', '/api/org/complete-setup', body: {});
+
+  Future<void> saveSetupOrganization(
+    Organization previous, {
+    required String name,
+    String? cnpj,
+  }) => _api.remote(
+    'PUT',
+    '/api/org/me',
+    body: {
+      'name': name,
+      'cnpj': cnpj ?? previous.cnpj,
+      'email': previous.email,
+      'phone': previous.phone,
+      'address': previous.address,
+      'city': previous.city,
+      'state': previous.state,
+    },
+  );
+
+  Future<String> joinWorkspace(String code) async {
+    final result = await _api.remote(
+      'POST',
+      '/api/org/join',
+      body: {'code': code.trim().toUpperCase()},
+    );
+    if (result is! Map ||
+        result['token'] is! String ||
+        (result['token'] as String).isEmpty) {
+      throw const ApiException(
+        'Resposta inválida da API. Entre novamente para conferir sua organização.',
+      );
+    }
+    return result['token'] as String;
+  }
 
   // API: GET /api/auth/me
   // Pega o perfil atualizado do usuário logado (nome, e-mail, cargo, foto) (｡•̀ᴗ-)✧

@@ -48,6 +48,8 @@ class SessionController extends ChangeNotifier {
   UserProfile? _user;
   String? _notice;
   String _workspaceType = 'corporate';
+  bool _setupDone = true;
+  String? _setupPreference;
 
   SessionStatus get status => _status;
   UserProfile? get user => _user;
@@ -55,6 +57,8 @@ class SessionController extends ChangeNotifier {
   String get serverUrl => api.baseUrl;
   String get workspaceType => _workspaceType;
   bool get isPersonal => _workspaceType == 'personal';
+  bool get needsSetup => !_setupDone;
+  String? get setupPreference => _setupPreference;
 
   Future<void> restore() async {
     final savedUrl = await _store.readServerUrl();
@@ -83,6 +87,9 @@ class SessionController extends ChangeNotifier {
           _workspaceType = identity['mode'] == 'personal'
               ? 'personal'
               : 'corporate';
+          // Preserve legacy encrypted offline identities; online context is
+          // authoritative. New incomplete accounts never enable offline mode.
+          _setupDone = identity['user']['setup_done'] != false;
           if (await _prepareOffline(remember: false)) {
             _notice =
                 'Usando registros locais. Alterações ficam pendentes até confirmação da API.';
@@ -107,13 +114,7 @@ class SessionController extends ChangeNotifier {
     String? targetWorkspace,
   }) async {
     final result = await _account.register(payload);
-    await _accept(result);
-    if (targetWorkspace == 'personal') {
-      await setWorkspaceMode('personal');
-      try {
-        await _account.completeSetup(name: 'Meu Espaço');
-      } catch (_) {}
-    }
+    await _accept(result, setupPreference: targetWorkspace);
   }
 
   Future<OAuthConfig> fetchOAuthConfig() => _account.oauthConfig();
@@ -121,12 +122,13 @@ class SessionController extends ChangeNotifier {
   Future<void> signInWithGoogle({
     required String credential,
     required String nonce,
+    String? targetWorkspace,
   }) async {
     final result = await _account.loginWithGoogle(
       credential: credential,
       nonce: nonce,
     );
-    await _accept(result);
+    await _accept(result, setupPreference: targetWorkspace);
   }
 
   Future<void> setWorkspaceMode(String type) async {
@@ -139,6 +141,69 @@ class SessionController extends ChangeNotifier {
   Future<void> _syncWorkspaceContext() async {
     final ctx = await _account.workspaceContext();
     _workspaceType = ctx.type;
+    _setupDone = ctx.setupDone;
+    if (needsSetup) api.detachOffline();
+  }
+
+  Future<void> completeOnboarding({
+    required String type,
+    required String name,
+    required String surname,
+    required String phone,
+    required String country,
+    required String workspaceName,
+    required Organization organization,
+    String? cnpj,
+  }) async {
+    if (!needsSetup || !['personal', 'corporate'].contains(type)) {
+      throw const ApiException(
+        'A configuração mudou. Atualize a sessão antes de continuar.',
+      );
+    }
+    if (organization.id != null && organization.id != _user?.orgId) {
+      throw const ApiException(
+        'A sessão mudou. Entre novamente antes de concluir o cadastro.',
+      );
+    }
+    final currentContext = await _account.workspaceContext();
+    if (currentContext.setupDone) {
+      await refreshUser();
+      return;
+    }
+    final currentOrganization = await _account.organization();
+    await _account.setWorkspaceType(type);
+    await _account.updateProfile({
+      'name': name.trim(),
+      'surname': surname.trim(),
+      'phone': phone.trim(),
+      'country': country.trim(),
+    });
+    await _account.saveSetupOrganization(
+      currentOrganization,
+      name: workspaceName.trim(),
+      cnpj: cnpj,
+    );
+    await _account.completeSetup();
+    await refreshUser();
+    if (needsSetup) {
+      throw const ApiException(
+        'A API ainda não confirmou a conclusão do cadastro. Tente atualizar a sessão.',
+      );
+    }
+    _setupPreference = null;
+    await _prepareOffline();
+    notifyListeners();
+  }
+
+  Future<void> joinWorkspace(String code) async {
+    final token = await _account.joinWorkspace(code);
+    // The server atomically moved this user and revoked the old session.
+    api.token = token;
+    await _store.writeToken(token);
+    await refreshUser();
+    _setupPreference = null;
+    await _prepareOffline();
+    notifyListeners();
   }
 
   Future<void> signOut() async {
@@ -165,13 +230,20 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _accept(AuthResult result) async {
+  Future<void> _accept(AuthResult result, {String? setupPreference}) async {
     await _store.writeToken(result.token);
     api.token = result.token;
     _user = result.user;
     _notice = null;
     try {
       await _syncWorkspaceContext();
+      // OAuth returns a minimal identity. Resume the saved profile rather than
+      // replacing an unfinished signup's surname/phone/country with blanks.
+      if (needsSetup) _user = await _account.me();
+      _setupPreference =
+          needsSetup && ['personal', 'corporate'].contains(setupPreference)
+          ? setupPreference
+          : null;
       await _prepareOffline();
       _setStatus(SessionStatus.signedIn);
     } catch (_) {
@@ -181,6 +253,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<bool> _prepareOffline({bool remember = true}) async {
+    if (needsSetup) return false;
     final user = _user, sessionToken = api.token, origin = api.baseUrl;
     if (kIsWeb || user == null || user.orgId == null || sessionToken == null) {
       return false;
@@ -195,6 +268,7 @@ class SessionController extends ChangeNotifier {
           'role': user.role,
           'org_id': user.orgId,
           'org_name': user.orgName,
+          'setup_done': _setupDone,
         }, _workspaceType);
       }
       final identity = await _store.offlineIdentity(sessionToken);
@@ -243,6 +317,8 @@ class SessionController extends ChangeNotifier {
     api.detachOffline();
     api.token = null;
     _user = null;
+    _setupDone = false;
+    _setupPreference = null;
     await _store.clearToken();
     try {
       await BackgroundSync.cancel();
