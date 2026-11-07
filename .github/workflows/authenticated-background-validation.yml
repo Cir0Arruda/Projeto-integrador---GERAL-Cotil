@@ -41,6 +41,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/astha-authenticated-native-qa" "$RUNNER_TEMP/astha-auth-android/avd"
           command -v mysqld
           command -v mysql
+      - name: Verify the separately-owned Linux database and API fixture
+        run: node apps/web/tests/integration/native-background-auth.cjs --selftest
       - name: Resolve locked Flutter dependencies and analyze the new probe
         working-directory: apps/mobile
         run: |

@@ -6,7 +6,7 @@ const mysql=require('../../api/node_modules/mysql2/promise');
 const root=path.resolve(__dirname,'../..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function vacantPort(){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
-function command(exe,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});let output='';child.stdout.on('data',data=>{if(output.length<4000)output+=data;});child.stderr.on('data',()=>{});const timer=setTimeout(()=>{child.kill();reject(Error('SANDBOX_COMMAND_TIMEOUT'));},60000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',code=>{clearTimeout(timer);code===0?resolve(output):reject(Object.assign(new Error('SANDBOX_COMMAND_FAILED'),{code}));});child.stdin.end(input);});}
+function command(exe,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});let output='';child.stdout.on('data',data=>{if(output.length<4000)output+=data;});child.stderr.on('data',()=>{});const timer=setTimeout(()=>{child.kill();reject(Error('SANDBOX_COMMAND_TIMEOUT'));},60000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',code=>{clearTimeout(timer);code===0?resolve(output):reject(Object.assign(new Error('SANDBOX_COMMAND_FAILED'),{code,sandboxStage:args.includes('--initialize-insecure')?'INITIALIZE':'PRIVATE_BOOTSTRAP_SQL'}));});child.stdin.end(input);});}
 async function removeOwnedWorkspace(workspace,runtimeRoot){const runtime=await fs.realpath(runtimeRoot),resolved=await fs.realpath(workspace);if(path.dirname(resolved)!==runtime||!path.basename(resolved).startsWith('mysql-'))throw Error('SANDBOX_CLEANUP_PATH_REJECTED');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 async function startSandbox({allowRestoreTest=false}={}){
  const windows=process.platform==='win32';
@@ -23,11 +23,12 @@ async function startSandbox({allowRestoreTest=false}={}){
  const data=path.join(workspace,'data'),log=path.join(workspace,'mysql.log'),pipe=windows?'ASTHA_TEST_'+randomBytes(8).toString('hex'):path.join(workspace,'mysql.sock');
  const password=randomBytes(36).toString('hex'),db='astha_test_'+randomBytes(8).toString('hex'),port=await vacantPort();
  const base=['--no-defaults','--basedir='+path.dirname(bin),'--datadir='+data,'--log-error='+log,'--mysqlx=0','--skip-log-bin',...(!windows?['--socket='+pipe,'--pid-file='+path.join(workspace,'mysql.pid')]:[])];
- let processHandle=null,admin=null,pool=null;
+ let processHandle=null,admin=null,pool=null,initializationComplete=false;
  async function launch(args){processHandle=spawn(mysqld,[...base,...args],{windowsHide:true,stdio:'ignore'});processHandle.on('error',()=>{});}
  async function pipeCommand(sql){return command(cli,['--no-defaults','--protocol='+(windows?'PIPE':'SOCKET'),'--socket='+pipe,'--user=root','--batch','--skip-column-names'],sql);}
  try{
   await command(mysqld,[...base,'--initialize-insecure']);
+  initializationComplete=true;
   await launch(['--skip-networking',...(windows?['--named-pipe=ON']:[]),'--socket='+pipe]);
   let ready=false;for(let n=0;n<100;n++){try{await pipeCommand('SELECT 1;');ready=true;break;}catch(_){if(processHandle.exitCode!==null)break;await delay(200);}}
   if(!ready)throw Error('SANDBOX_BOOTSTRAP_UNAVAILABLE');
@@ -57,7 +58,7 @@ async function startSandbox({allowRestoreTest=false}={}){
   const connectionModule=require('../../api/database/connection');connectionModule.pool=pool;connectionModule.readWithRetry=(sql,params)=>pool.execute(sql,params);
   let lastFailure=null;const track=target=>{const original=target.execute.bind(target);target.execute=async(sql,params)=>{try{return await original(sql,params);}catch(error){lastFailure={code:error.code,operation:sql.split(/\s+/).slice(0,4).join(' ')};throw error;}};};track(pool);const acquire=pool.getConnection.bind(pool);pool.getConnection=async()=>{const item=await acquire();if(!item.testTracked){track(item);item.testTracked=true;}return item;};
   return{pool,admin,db,workspace,port,lastFailure:()=>lastFailure,async close(){await pool.end();try{await admin.query('SHUTDOWN');}catch(_){}await admin.end().catch(()=>{});if(processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null){processHandle.kill();await new Promise(resolve=>processHandle.once('exit',resolve));}}await removeOwnedWorkspace(workspace,runtimeRoot);}};
- }catch(error){await pool?.end().catch(()=>{});await admin?.query('SHUTDOWN').catch(()=>{});await admin?.end().catch(()=>{});if(processHandle&&processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null)processHandle.kill();}if(!processHandle||processHandle.exitCode!==null)await removeOwnedWorkspace(workspace,runtimeRoot);throw error;}
+ }catch(error){if(!windows&&!initializationComplete){/* No password has been passed to MySQL at this stage. Never emit later SQL logs. */const diagnostic=await fs.readFile(log,'utf8').catch(()=> 'Initialization log unavailable');console.error('ISOLATED_MYSQL_INITIALIZATION_DIAGNOSTIC',diagnostic.slice(-4000));}await pool?.end().catch(()=>{});await admin?.query('SHUTDOWN').catch(()=>{});await admin?.end().catch(()=>{});if(processHandle&&processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null)processHandle.kill();}if(!processHandle||processHandle.exitCode!==null)await removeOwnedWorkspace(workspace,runtimeRoot);throw error;}
 }
 module.exports={startSandbox,root};
 if(require.main===module)startSandbox().then(async sandbox=>{console.log('ISOLATED_MYSQL_READY');await sandbox.close();console.log('ISOLATED_MYSQL_STOPPED');}).catch(error=>{console.error('ISOLATED_MYSQL_FAILED:'+error.message);process.exitCode=1;});

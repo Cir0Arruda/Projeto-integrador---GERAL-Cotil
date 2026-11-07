@@ -142,7 +142,7 @@ async function main({ selftest = false } = {}) {
   }
 }
 if (require.main === module) main({ selftest: process.argv.includes('--selftest') }).catch(error => {
-  console.error('NATIVE_BACKGROUND_AUTH_FAILED',phase,/^[A-Z0-9_]+$/.test(error.code || '') ? error.code : 'VALIDATION_FAILED');
+  console.error('NATIVE_BACKGROUND_AUTH_FAILED',phase,error.sandboxStage || '',/^[A-Z0-9_]+$/.test(error.code || '') ? error.code : 'VALIDATION_FAILED');
   process.exitCode = 1;
 });
 module.exports = { main };
