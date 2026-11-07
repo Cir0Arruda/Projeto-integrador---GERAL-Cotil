@@ -50,8 +50,8 @@ O SO controla a agenda. Quinze minutos são uma solicitação de intervalo míni
 | --- | --- |
 | Android/iOS físicos e biometria | Nenhum dispositivo conectado em Flutter/ADB. Android SDK e aceleraçãoWHPX disponíveis, sem AVD local. Aguardar aparelho autorizado; emulador não prova biometria física. |
 | iOS | Revisão final aprovada no simulador, incluindo armazenamento e XCTest. Distribuição/aparelho físico e entrega real de tarefa de fundo no iPhone continuam pendentes. |
-| Google OAuth real | ClientID configurado. FlutterWeb servido em localhost7357, sessão33405. Controle de Chrome interrompido pela ferramenta por não determinar com segurança a URL; não contornar a barreira ou automatizar credenciais. A conta/consentimento precisam do usuário. |
-| E-mail automático | Não há transporte SMTP/API configurado nem serviço de envio implementado. Convites atuais geram códigos; recuperação usa códigos salvos. Necessários provedor/remetente e destinatário autorizado antes de implementar e comprovar entrega. Nenhum e-mail enviado. |
+| Google OAuth real | ClientID configurado. O usuário confirmou que ainda não testou. Build Web normal atualizado servido em http://localhost:7357, sessão84596, HTTP200 conferido em 07/11. Controle de Chrome interrompido pela ferramenta por não determinar com segurança a URL; não contornar a barreira ou automatizar credenciais. A conta/consentimento precisam do usuário. |
+| E-mail automático | Transporte SMTP, recuperação por código enviado e envio explícito de convite implementados e aprovados em ensaio local isolado. Desativado por padrão; faltam provedor/remetente e destinatário autorizado para comprovar entrega externa. Nenhuma mensagem enviada para pessoa real. |
 | Aplicativo móvel encerrado | Agendamento implementado; execução Android após saída da interface aprovada em dois ensaios sem sessão. Operação autenticada com processo de interface encerrado aprovada no emulador Android, no run 42325991548. Falta homologação em aparelho físico e execução real em iPhone; simulador não comprova sua agenda/bateria. |
 | Assinatura comercial | Instalador `NotSigned`; nenhum certificado de code signing no armazenamento consultado. Necessário certificado/serviço autorizado; certificado autoassinado não substitui confiança comercial. |
 | Desinstalação | Ferramenta bloqueou abrir o desinstalador com `product policy blocks this app`. Aguardando remoção manual da cópia QA. Não executar a mesma ação por outro mecanismo para contornar o bloqueio. |
@@ -84,3 +84,35 @@ Artifact `authenticated-native-result`, ID `13555611735`, digest informado pelo 
 
 O escopo novo altera apenas testes e workflow. A revisão da comparação com `8d2273e` confirmou seis arquivos, nenhum arquivo removido e nenhum código de produção alterado. Permanecem pendentes os aparelhos/biometria físicos, entrega de fundo em iPhone, OAuth com consentimento do usuário, transporte de e-mail real, assinatura comercial e remoção manual da instalação QA bloqueada pela ferramenta.
 O usuário autorizou explicitamente a retomada nesta janela. Ao restar 5% ou menos dos 300 minutos, salvar checkpoint e pausar. Depois dessa pausa, retomar após reset natural a 100%, salvo nova instrução explícita do usuário; não consumir créditos de reset. Conferir os runs/jobs reais antes de repetir comandos. Há trabalho verificável no CI; dependências externas não encerram o objetivo.
+
+
+## Recuperação e convites por SMTP — 07/11/2026
+
+Foi concluída a implementação que podia avançar sem um provedor externo: SMTP opcional com Nodemailer 10.3.1 fixado no lockfile, TLS obrigatório/certificado validado, envio de um único destinatário e sem conteúdo de arquivo/URL. A configuração fica somente no servidor e permanece desativada por padrão. Esta alteração não foi implantada na VPS e não modificou bancos ou backups existentes.
+
+A recuperação pública responde de forma genérica antes da consulta/envio, com fila volátil limitada. O código tem 128 bits de entropia, hash SHA-256 no banco, expiração de 15 minutos e uso único. Solicitar e-mail preserva códigos salvos; rotacionar os códigos salvos invalida também um código de e-mail pendente. O reset invalida todas as sessões e códigos. Erro SMTP remove o novo código e preserva os códigos salvos. Contas Google/Microsoft não recebem reset de senha local.
+
+Convites continuam sem envio automático ao criar um código. Uma ação explícita Web/Flutter envia um convite salvo ao seu destinatário, exigindo administrador e a organização correta. Convites usados, expirados, sem destinatário ou de outra organização são recusados. Falha de envio preserva o convite. A consulta foi verificada em MySQL real e usa comparação binária do escopo para não depender de collations diferentes.
+
+Evidências finais locais:
+
+- Verificação do projeto: 422 arquivos JavaScript/sintaxe, referências e limites de publicação aprovados; paridade das fontes Desktop aprovada.
+- Suíte padrão Web/Desktop: **473 testes aprovados**, zero falhas. Integrações de banco não fazem parte dessa suíte.
+- Integração `transactional-mail-flow.cjs`: **API HTTP, MySQL descartável e protocolo SMTP real em loopback aprovados**, incluindo destinatário, hash/expiração, cooldown, reset, uso único, rotação, revogação, falha de envio e isolamento entre organizações. Processo e dados descartáveis foram limpos. Nenhum SMTP externo foi usado.
+- Flutter: análise completa sem problemas, **62 testes aprovados e 1 teste vivo ignorado**, builds normais Web e APK debug com entrypoint `lib/main.dart` aprovados. Inclui tela estreita, erro de resposta malformada e saída durante requisição sem acessar controladores descartados.
+- Conferência visual Web em 390×844 e 1280×900: formulários/estados legíveis, sem rolagem horizontal e sem erros no console. A prévia visual utilizou respostas controladas, separadamente do ensaio real HTTP/MySQL/SMTP.
+- Instalação da dependência nos lockfiles API/desenvolvimento: auditoria npm sem vulnerabilidades reportadas. Não equivale a uma certificação de segurança.
+
+Logs locais: `mail-project-check-final.log`, `mail-root-suite-final.log`, `mail-flow-final.log`, `flutter-email-analysis-final.log`, `flutter-email-suite-final.log`, `flutter-email-web-final.log`, `flutter-email-apk-final.log`, em `tests/.runtime`; não publicar logs integrais. Fontes publicáveis são projetadas sem ambiente privado, banco, dependências instaladas ou espelho Desktop de desenvolvimento. Guia operacional: `docs/operations/TRANSACTIONAL_EMAIL.md`.
+
+APK normal atualizado em Downloads: `ASTHA_RAVEN_2026-11-07_email_debug.apk`, 227.154.291 bytes, SHA-256 `06232484127e3b723a2152996ad30b1628a9e431e5736296c7f424d51a742201`; cópia conferida. O APK anterior foi preservado. Não é build de distribuição assinado nem prova homologação em aparelho. Os avisos de migração futura de Kotlin e de WASM/fontes no Web não impediram os builds atuais.
+
+O servidor local do build Web foi restabelecido em `http://localhost:7357` e retornou HTTP200. Isso prepara o teste manual Google; não comprova login, seleção de conta ou consentimento. O usuário respondeu “Não testei ainda”. Não houve nova tentativa de automatizar a ação bloqueada no Chrome.
+
+Permanecem pendentes: entrega SMTP externa com provedor/remetente e destinatário autorizado; consentimento Google; aparelhos/biometria físicos; execução real de fundo em iPhone; assinatura comercial e remoção manual QA bloqueada pela ferramenta. O objetivo integral não está concluído.
+
+### Aprovação nativa da revisão de e-mail
+
+O [run 42352169482](https://github.com/Cir0Arruda/Projeto-integrador---GERAL-Cotil/actions/runs/42352169482), revisão `c35eb0b6d6988ae8071f503c16403a49f79229e0`, concluiu com **sucesso** em Android (`128342437156`) e iOS (`128342437370`). A nova execução foi necessária pelas mudanças na tela compartilhada de login/recuperação e convites; não houve reinício por mera demora. Android aprovou build, instalação, armazenamento nativo e worker sem sessão após encerrar a interface. iOS aprovou análise, testes Dart, build de simulador, início/XCTest e armazenamento nativo. O ensaio autenticado com API/MySQL isolados permanece registrado no run 42325991548; esta nova execução não substitui nem amplia aquela evidência para aparelhos físicos.
+
+A promoção preserva as quebras de linha de seis arquivos existentes para manter o diff focado. O conteúdo funcional corresponde à revisão nativa aprovada; o relatório acrescenta a evidência final. A comparação confirmou 24 arquivos publicáveis e nenhuma remoção. O cliente Desktop público continua sendo apenas o shell HTTPS; seu pacote não recebe cópias independentes da API ou credenciais SMTP.

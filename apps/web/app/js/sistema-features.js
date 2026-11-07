@@ -956,6 +956,10 @@ async function handleAddUser(e){
   const output=document.getElementById('newUserInviteResult');
   output.style.display='block';
   output.textContent=`Convite criado: ${result.data.code}. Compartilhe o código com a pessoa para ela concluir o cadastro. Expira em ${new Date(result.data.expires_at).toLocaleString('pt-BR')}.`;
+  if(email&&result.data.id){
+    const send=document.createElement('button');send.type='button';send.className='btn btn-secondary';send.textContent='Enviar convite por e-mail';
+    send.addEventListener('click',async()=>{send.disabled=true;try{const sent=await API.post(`/org/invites/${result.data.id}/email`,{});showToast(sent.success?sent.data.message:sent.error||'Não foi possível enviar o convite.',sent.success?'success':'error');}catch(_){showToast('Não foi possível enviar o convite. Compartilhe o código.','error');}finally{send.disabled=false;}});output.append(document.createElement('br'),send);
+  }
   showToast('Convite gerado com sucesso!','success');
 }
 

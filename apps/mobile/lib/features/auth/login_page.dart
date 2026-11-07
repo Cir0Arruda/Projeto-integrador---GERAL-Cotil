@@ -15,6 +15,7 @@ import '../../widgets/connection_status_badge.dart';
 import '../../widgets/dialogs.dart';
 import '../../widgets/google_sign_in_button.dart';
 import 'register_page.dart';
+import 'recovery_page.dart';
 
 // Telinha de login com visual minimalista e elegante (✿◠‿◠)
 class LoginPage extends StatefulWidget {
@@ -151,6 +152,19 @@ class _LoginPageState extends State<LoginPage> {
                       validator: (value) => (value == null || value.isEmpty)
                           ? 'Informe a senha'
                           : null,
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const RecoveryPage(),
+                                ),
+                              ),
+                        child: const Text('Esqueceu a senha?'),
+                      ),
                     ),
                     const SizedBox(height: 22),
                     FilledButton(
