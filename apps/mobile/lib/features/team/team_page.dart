@@ -11,12 +11,14 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format.dart';
+import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../models/account_models.dart';
 import '../../repositories/account_repository.dart';
 import '../../state/session_controller.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/cards.dart';
+import '../../widgets/dialogs.dart';
 import '../../widgets/user_avatar.dart';
 import '../shared/labels.dart';
 
@@ -28,7 +30,8 @@ class TeamPage extends StatefulWidget {
   State<TeamPage> createState() => _TeamPageState();
 }
 
-class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin {
+class _TeamPageState extends State<TeamPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   int _revision = 0;
 
@@ -56,7 +59,10 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return AlertDialog(
-              title: const Text('Convidar para o workspace', style: TextStyle(fontWeight: FontWeight.w700)),
+              title: const Text(
+                'Convidar para o workspace',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -74,12 +80,26 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         initialValue: selectedRole,
-                        decoration: const InputDecoration(labelText: 'Papel atribuído *'),
+                        decoration: const InputDecoration(
+                          labelText: 'Papel atribuído *',
+                        ),
                         items: const [
-                          DropdownMenuItem(value: 'viewer', child: Text('Visualizador')),
-                          DropdownMenuItem(value: 'operator', child: Text('Operador')),
-                          DropdownMenuItem(value: 'manager', child: Text('Gerente')),
-                          DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+                          DropdownMenuItem(
+                            value: 'viewer',
+                            child: Text('Visualizador'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'operator',
+                            child: Text('Operador'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'manager',
+                            child: Text('Gerente'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'admin',
+                            child: Text('Administrador'),
+                          ),
                         ],
                         onChanged: (v) {
                           if (v != null) setDialogState(() => selectedRole = v);
@@ -88,7 +108,9 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
                         initialValue: expiresHours,
-                        decoration: const InputDecoration(labelText: 'Validade do convite *'),
+                        decoration: const InputDecoration(
+                          labelText: 'Validade do convite *',
+                        ),
                         items: const [
                           DropdownMenuItem(value: 24, child: Text('24 horas')),
                           DropdownMenuItem(value: 48, child: Text('48 horas')),
@@ -111,16 +133,25 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                 FilledButton(
                   onPressed: () async {
                     try {
-                      final invite = await context.read<AccountRepository>().createInvite(
-                            email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                      final invite = await context
+                          .read<AccountRepository>()
+                          .createInvite(
+                            email: emailCtrl.text.trim().isEmpty
+                                ? null
+                                : emailCtrl.text.trim(),
                             role: selectedRole,
                             expiresHours: expiresHours,
                           );
-                      if (dialogCtx.mounted) Navigator.of(dialogCtx).pop(invite);
+                      if (dialogCtx.mounted) {
+                        Navigator.of(dialogCtx).pop(invite);
+                      }
                     } catch (e) {
                       if (dialogCtx.mounted) {
                         ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                          SnackBar(content: Text('Erro ao gerar convite: $e'), backgroundColor: AppColors.danger),
+                          SnackBar(
+                            content: Text('Erro ao gerar convite: $e'),
+                            backgroundColor: AppColors.danger,
+                          ),
                         );
                       }
                     }
@@ -143,6 +174,7 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
   }
 
   void _showInviteCodeDialog(OrgInvite invite) {
+    var sending = false;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -165,7 +197,11 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                   Expanded(
                     child: SelectableText(
                       invite.code,
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 1),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        letterSpacing: 1,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -174,7 +210,11 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: invite.code));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Código copiado para a área de transferência.')),
+                        const SnackBar(
+                          content: Text(
+                            'Código copiado para a área de transferência.',
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -184,6 +224,32 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
           ],
         ),
         actions: [
+          if (invite.id > 0 && invite.email.isNotEmpty)
+            StatefulBuilder(
+              builder: (dialogContext, update) => TextButton.icon(
+                icon: const Icon(Icons.mail_outline),
+                label: Text(sending ? 'Enviando…' : 'Enviar por e-mail'),
+                onPressed: sending
+                    ? null
+                    : () async {
+                        update(() => sending = true);
+                        try {
+                          final message = await context
+                              .read<AccountRepository>()
+                              .sendInviteEmail(invite.id);
+                          if (mounted) showToast(context, message);
+                        } on ApiException catch (error) {
+                          if (mounted) {
+                            showToast(context, error.message, error: true);
+                          }
+                        } finally {
+                          if (dialogContext.mounted) {
+                            update(() => sending = false);
+                          }
+                        }
+                      },
+              ),
+            ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Concluído'),
@@ -210,10 +276,16 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                 initialValue: currentRole,
                 decoration: const InputDecoration(labelText: 'Papel de acesso'),
                 items: const [
-                  DropdownMenuItem(value: 'viewer', child: Text('Visualizador')),
+                  DropdownMenuItem(
+                    value: 'viewer',
+                    child: Text('Visualizador'),
+                  ),
                   DropdownMenuItem(value: 'operator', child: Text('Operador')),
                   DropdownMenuItem(value: 'manager', child: Text('Gerente')),
-                  DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+                  DropdownMenuItem(
+                    value: 'admin',
+                    child: Text('Administrador'),
+                  ),
                 ],
                 onChanged: (v) {
                   if (v != null) setDialogState(() => currentRole = v);
@@ -229,12 +301,18 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
             FilledButton(
               onPressed: () async {
                 try {
-                  await context.read<AccountRepository>().updateMemberRole(member.id, currentRole);
+                  await context.read<AccountRepository>().updateMemberRole(
+                    member.id,
+                    currentRole,
+                  );
                   if (dialogCtx.mounted) Navigator.of(dialogCtx).pop(true);
                 } catch (e) {
                   if (dialogCtx.mounted) {
                     ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                      SnackBar(content: Text('Erro: $e'), backgroundColor: AppColors.danger),
+                      SnackBar(
+                        content: Text('Erro: $e'),
+                        backgroundColor: AppColors.danger,
+                      ),
                     );
                   }
                 }
@@ -282,7 +360,9 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
             child: AsyncView<List<OrgMember>>(
               load: repository.members,
               builder: (context, members) {
-                if (members.isEmpty) return const EmptyState(message: 'Nenhum membro encontrado.');
+                if (members.isEmpty) {
+                  return const EmptyState(message: 'Nenhum membro encontrado.');
+                }
                 return ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
@@ -291,16 +371,23 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                   itemBuilder: (context, index) {
                     final member = members[index];
                     final color = roleColor(member.role);
-                    final details = [
-                      member.email,
-                      member.positionLabel,
-                      member.department,
-                      member.phone,
-                    ].where((s) => s != null && s.trim().isNotEmpty).map((s) => s!).join('\n');
+                    final details =
+                        [
+                              member.email,
+                              member.positionLabel,
+                              member.department,
+                              member.phone,
+                            ]
+                            .where((s) => s != null && s.trim().isNotEmpty)
+                            .map((s) => s!)
+                            .join('\n');
 
                     return Card(
                       child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         leading: UserAvatar(
                           name: member.displayName,
                           avatarUrl: member.avatarUrl,
@@ -317,10 +404,16 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            StatusPill(label: roleLabel(member.role), color: color),
+                            StatusPill(
+                              label: roleLabel(member.role),
+                              color: color,
+                            ),
                             if (!member.active) ...[
                               const SizedBox(height: 4),
-                              const StatusPill(label: 'Inativo', color: AppColors.textMuted),
+                              const StatusPill(
+                                label: 'Inativo',
+                                color: AppColors.textMuted,
+                              ),
                             ],
                           ],
                         ),
@@ -354,10 +447,16 @@ class _TeamPageState extends State<TeamPage> with SingleTickerProviderStateMixin
                       child: ListTile(
                         leading: const CircleAvatar(
                           backgroundColor: AppColors.surface,
-                          child: Icon(Icons.vpn_key_outlined, size: 20, color: AppColors.textPrimary),
+                          child: Icon(
+                            Icons.vpn_key_outlined,
+                            size: 20,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                         title: Text(
-                          invite.email.isNotEmpty ? invite.email : 'Convite aberto (qualquer e-mail)',
+                          invite.email.isNotEmpty
+                              ? invite.email
+                              : 'Convite aberto (qualquer e-mail)',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         subtitle: Text(

@@ -3,6 +3,8 @@ const crypto=require('node:crypto'),bcrypt=require('bcryptjs');
 const {verifyToken}=require('../security/tokens'),{validPassword,PASSWORD_ERROR}=require('../security/password-policy');
 const {ownScope}=require('./personal-spaces');
 const RECOVERY_PREFIX='account-recovery:';
+const EMAIL_RECOVERY_PREFIX='account-email:';
+const {mailer,mailbox}=require('./transactional-mail');
 const failure=(message,status=400,code)=>Object.assign(new Error(message),{status,code});
 const email=value=>{if(typeof value!=='string'||value.length>255||!/^\s*[^\s@]+@[^\s@]+\.[^\s@]+\s*$/.test(value))throw failure('Informe um e-mail válido.');return value.trim().toLowerCase();};
 const sessionToken=req=>req.headers.authorization.slice(7);
@@ -46,13 +48,36 @@ async function sessions(db,req){const [rows]=await db.execute('SELECT id,provide
 async function revokeSession(db,req,value){if(!/^[1-9]\d*$/.test(String(value))||!Number.isSafeInteger(Number(value)))throw failure('Sessão não encontrada.',404);const [rows]=await db.execute('SELECT token FROM sessions WHERE id=? AND user_id=?',[Number(value),req.user.id]);if(!rows.length)throw failure('Sessão não encontrada.',404);const [result]=await db.execute('DELETE FROM sessions WHERE id=? AND user_id=?',[Number(value),req.user.id]);if(!result.affectedRows)throw failure('Sessão não encontrada.',404);return {message:'Sessão encerrada.',signOut:rows[0].token===sessionToken(req)};}
 async function revokeOthers(db,req){await db.execute('DELETE FROM sessions WHERE user_id=? AND token<>?',[req.user.id,sessionToken(req)]);return {message:'Outras sessões encerradas.'};}
 async function recoveryCodes(pool,req,body){const user=await proof(pool,req,body,true);return transaction(pool,req,user,async(db,current)=>{
- await db.execute('DELETE FROM password_resets WHERE user_id=? AND token LIKE ?',[current.id,RECOVERY_PREFIX+'%']);
+ await db.execute('DELETE FROM password_resets WHERE user_id=?',[current.id]);
  const codes=Array.from({length:8},()=>crypto.randomBytes(16).toString('base64url'));
  for(const code of codes)await db.execute('INSERT INTO password_resets (user_id,token,used,expires_at) VALUES (?,?,0,DATE_ADD(NOW(),INTERVAL 365 DAY))',[current.id,RECOVERY_PREFIX+crypto.createHash('sha256').update(code).digest('hex')]);
  await audit(db,current,'SELF_RECOVERY_CODES');return {codes,expiresInDays:365};
  });}
+async function requestEmailRecovery(pool,body,delivery=mailer){
+ let address;try{address=mailbox(email(body?.email));}catch(_){throw failure('Informe um e-mail válido.');}
+ if(!delivery.enabled())throw failure('A recuperação por e-mail está indisponível. Use um código salvo ou tente novamente mais tarde.',503);
+ const accepted=delivery.enqueueRecovery(async send=>{
+  const db=await pool.getConnection();let code,token,user;
+  try{
+   await db.beginTransaction();
+   const [rows]=await db.execute("SELECT id FROM users WHERE email=? AND provider='local' AND is_active=1 FOR UPDATE",[address]);user=rows[0];
+   if(user){
+    const [recent]=await db.execute('SELECT id FROM password_resets WHERE user_id=? AND token LIKE ? AND created_at>DATE_SUB(NOW(),INTERVAL 60 SECOND) LIMIT 1',[user.id,EMAIL_RECOVERY_PREFIX+'%']);
+    if(!recent.length){
+     code=crypto.randomBytes(16).toString('base64url');token=EMAIL_RECOVERY_PREFIX+crypto.createHash('sha256').update(code).digest('hex');
+     await db.execute('DELETE FROM password_resets WHERE user_id=? AND token LIKE ?',[user.id,EMAIL_RECOVERY_PREFIX+'%']);
+     await db.execute('INSERT INTO password_resets(user_id,token,used,expires_at) VALUES (?,?,0,DATE_ADD(NOW(),INTERVAL 15 MINUTE))',[user.id,token]);
+    }
+   }
+   await db.commit();
+  }catch(error){await db.rollback();throw error;}finally{db.release();}
+  if(code){try{await send({to:address,code});}catch(error){await pool.execute('DELETE FROM password_resets WHERE user_id=? AND token=?',[user.id,token]);throw error;}}
+ });
+ if(!accepted)throw failure('Muitas solicitações de e-mail. Tente novamente em alguns minutos.',503);
+ return {message:'Se houver uma conta local ativa para este endereço, a solicitação de envio será processada. Verifique também o spam. Se não receber o código, aguarde um minuto antes de tentar novamente.'};
+}
 async function recover(pool,body){const address=email(body?.email);if(!validPassword(body?.new_password))throw failure(PASSWORD_ERROR);if(typeof body?.code!=='string'||! /^[a-zA-Z0-9_-]{22}$/.test(body.code))throw failure('E-mail ou código de recuperação inválido.');
- const db=await pool.getConnection();try{await db.beginTransaction();const [rows]=await db.execute("SELECT id,org_id FROM users WHERE email=? AND provider='local' AND is_active=1 FOR UPDATE",[address]);const user=rows[0];if(!user)throw failure('E-mail ou código de recuperação inválido.');const token=RECOVERY_PREFIX+crypto.createHash('sha256').update(body.code).digest('hex');const [codes]=await db.execute('SELECT id FROM password_resets WHERE user_id=? AND token=? AND used=0 AND expires_at>NOW() FOR UPDATE',[user.id,token]);if(!codes.length)throw failure('E-mail ou código de recuperação inválido.');const hash=await bcrypt.hash(body.new_password,12);await db.execute('UPDATE users SET password_hash=?,failed_logins=0,locked_until=NULL WHERE id=?',[hash,user.id]);await revokeAll(db,user.id);await audit(db,user,'SELF_ACCOUNT_RECOVERY');await db.commit();return {message:'Senha redefinida. Entre novamente e gere novos códigos de recuperação.'};}catch(e){await db.rollback();throw e;}finally{db.release();}}
+ const db=await pool.getConnection();try{await db.beginTransaction();const [rows]=await db.execute("SELECT id,org_id FROM users WHERE email=? AND provider='local' AND is_active=1 FOR UPDATE",[address]);const user=rows[0];if(!user)throw failure('E-mail ou código de recuperação inválido.');const digest=crypto.createHash('sha256').update(body.code).digest('hex');const [codes]=await db.execute('SELECT id FROM password_resets WHERE user_id=? AND token IN (?,?) AND used=0 AND expires_at>NOW() FOR UPDATE',[user.id,RECOVERY_PREFIX+digest,EMAIL_RECOVERY_PREFIX+digest]);if(!codes.length)throw failure('E-mail ou código de recuperação inválido.');const hash=await bcrypt.hash(body.new_password,12);await db.execute('UPDATE users SET password_hash=?,failed_logins=0,locked_until=NULL WHERE id=?',[hash,user.id]);await revokeAll(db,user.id);await audit(db,user,'SELF_ACCOUNT_RECOVERY');await db.commit();return {message:'Senha redefinida. Entre novamente e gere novos códigos de recuperação.'};}catch(e){await db.rollback();throw e;}finally{db.release();}}
 async function deleteAccount(pool,req,body){
  if(body?.confirmation!=='EXCLUIR'||body.acknowledged!==true)throw failure('Confirme a exclusão digitando EXCLUIR.');
  const confirmed=email(body.confirmed_email),user=await proof(pool,req,body);if(confirmed!==user.email.toLowerCase())throw failure('Confirme o e-mail da conta que será excluída.');
@@ -73,4 +98,4 @@ async function deleteAccount(pool,req,body){
   await audit(db,current,'SELF_ACCOUNT_DELETE');return {message:'Sua conta foi excluída e todas as sessões foram encerradas.',signOut:true};
  },true);
 }
-module.exports={context,changePassword,changeEmail,sessions,revokeSession,revokeOthers,recoveryCodes,recover,deleteAccount};
+module.exports={context,changePassword,changeEmail,sessions,revokeSession,revokeOthers,recoveryCodes,recover,requestEmailRecovery,deleteAccount};

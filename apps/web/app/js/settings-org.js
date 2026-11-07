@@ -415,6 +415,11 @@
           catch (_) { window.prompt('Copie o código do convite:', result.data.code); }
         });
         output.replaceChildren(code, detail, copy);
+        if(data.get('email')&&result.data.id){
+          const send=node('button','btn-edit','Enviar convite por e-mail');send.type='button';
+          send.addEventListener('click',async()=>{send.disabled=true;try{const sent=await API.post(`/org/invites/${result.data.id}/email`,{});notify(sent.success?sent.data.message:sent.error||'Não foi possível enviar o convite.',!sent.success);}catch(_){notify('Não foi possível enviar o convite. Compartilhe o código.',true);}finally{send.disabled=false;}});
+          output.append(send);
+        }
       }
       inviteForm.elements.namedItem('email').value = '';
       notify('Convite gerado. Compartilhe o código com a pessoa.');

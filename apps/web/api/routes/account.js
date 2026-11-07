@@ -1,6 +1,8 @@
 'use strict';
 const router=require('express').Router(),{pool}=require('../database/connection'),auth=require('../middleware/auth'),limits=require('../middleware/accountLimit'),service=require('../services/account');
 const handle=fn=>async(req,res)=>{try{const result=await fn(req);if(result.signOut)res.clearCookie('astha_page_session',{path:'/app'});res.json(result);}catch(e){res.status(e.status||503).json({error:e.status?e.message:'Não foi possível concluir esta ação agora.',...(e.status&&e.code?{code:e.code}:{})});}};
+router.get('/recovery-options',(req,res)=>{res.set('Cache-Control','no-store');res.json({emailRecoveryAvailable:require('../services/transactional-mail').mailer.enabled()});});
+router.post('/recover/email',limits.recovery,handle(req=>service.requestEmailRecovery(pool,req.body)));
 router.post('/recover',limits.recovery,handle(req=>service.recover(pool,req.body)));
 router.use(auth);
 router.get('/',handle(req=>service.context(pool,req)));

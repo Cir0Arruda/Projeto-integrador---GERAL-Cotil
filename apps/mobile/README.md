@@ -55,3 +55,11 @@ O ícone `assets/google-g.png` é o arquivo oficial, com proporção fixa, distr
 Botões do tema usam largura mínima finita (`Size(64, 50)`). `Size.fromHeight(50)` define largura infinita e quebrava os botões dentro de linhas, deixando o módulo pessoal sem layout. O cabeçalho se ajusta a telas estreitas, o status compacto de conexão tem texto reduzido e os títulos do Resumo podem quebrar linha. O menu de conta corporativa oferece saída explícita para troca de conta, preservando o espaço pessoal configurado.
 
 Testes `personal_layout_test.dart` verificam as cinco abas com o tema real, em 360 e 640 pixels, com e sem cômodo/móvel/pertence/tarefa. Não houve alteração de dados ou API nesta correção.
+
+## Recuperação e convites por e-mail — 07/11/2026
+
+O login oferece **Esqueceu a senha?**, com tela nativa para código salvo ou recebido por e-mail. A solicitação de e-mail aparece somente quando a API informa que o SMTP está configurado. Códigos de e-mail valem por 15 minutos, são de uso único e o reset encerra as sessões antigas. Contas Google/Microsoft usam a recuperação do próprio provedor.
+
+Em **Equipe e convites**, criar convite gera apenas o código. O diálogo de um convite com destinatário permite **Enviar por e-mail**, uma chamada on-line separada e autenticada. Recusa do provedor mantém o código para compartilhar. O sucesso indica aceitação SMTP, sem comprovar chegada à caixa de entrada.
+
+Somente a API guarda `MAIL_*`; não coloque credenciais SMTP em defines, assets, Flutter ou Git. O envio permanece desativado até o responsável configurar provedor/remetente. Os testes cobrem a tela em largura de celular e HTTP controlado; a homologação em aparelho e e-mail real continua pendente. Consulte `docs/operations/TRANSACTIONAL_EMAIL.md` na raiz do repositório.

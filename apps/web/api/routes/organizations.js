@@ -455,7 +455,7 @@ router.post('/invites', async (req, res) => {
     const code = crypto.randomBytes(4).toString('hex').toUpperCase(); // ex: A3F7B2C1
     const expiresAt = new Date(Date.now() + (expires_hours || 48) * 60 * 60 * 1000);
 
-    await pool.execute(
+    const [createdInvite] = await pool.execute(
       `INSERT INTO org_invites (org_id, code, email, role, position_id, expires_at, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [req.user.org_id, code, email || null, role || 'viewer', position_id || null, expiresAt, req.user.id]
@@ -463,6 +463,9 @@ router.post('/invites', async (req, res) => {
 
     const [org] = await pool.execute('SELECT name FROM organizations WHERE id = ?', [req.user.org_id]);
     res.status(201).json({
+      id: createdInvite.insertId,
+      email: email || null,
+      role: role || 'viewer',
       code,
       org_name: org[0]?.name,
       expires_at: expiresAt,
@@ -472,6 +475,25 @@ router.post('/invites', async (req, res) => {
     safeErrorLog('POST /org/invites error:', err);
     res.status(500).json({ error: 'Erro ao gerar convite' });
   }
+});
+
+// Only an explicit authenticated action sends an existing, recipient-bound invite.
+router.post('/invites/:id/email', require('../middleware/accountLimit').sensitive, async (req, res) => {
+  if (!assertOrg(req, res)) return;
+  if (!['superadmin', 'admin'].includes(req.user.role)) return res.status(403).json({error:'Sem permissão para enviar convites'});
+  const id = Number(req.params.id);
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) return res.status(404).json({error:'Convite não encontrado'});
+  try {
+    const [rows] = await pool.execute(`SELECT i.email,i.code,i.expires_at,o.name AS org_name FROM org_invites i
+      JOIN organizations o ON BINARY o.id=BINARY i.org_id WHERE i.id=? AND BINARY i.org_id=BINARY ? AND i.used_at IS NULL AND i.expires_at>NOW()`,[id,req.user.org_id]);
+    const invite=rows[0];
+    if(!invite) return res.status(404).json({error:'Convite não encontrado ou expirado'});
+    if(!invite.email) return res.status(400).json({error:'Este convite não possui destinatário. Gere um convite com e-mail.'});
+    const delivery=require('../services/transactional-mail').mailer;
+    if(!delivery.enabled()) return res.status(503).json({error:'O envio de e-mail ainda não foi configurado. Compartilhe o código do convite.'});
+    await delivery.sendInvitation({to:invite.email,code:invite.code,organization:invite.org_name,expiresAt:invite.expires_at});
+    res.json({message:'Convite aceito pelo servidor de e-mail. Peça à pessoa para verificar a caixa de entrada e o spam.'});
+  } catch (_) { res.status(503).json({error:'Não foi possível enviar o e-mail. O código do convite continua disponível para compartilhamento.'}); }
 });
 
 // GET /api/org/invites — listar convites ativos

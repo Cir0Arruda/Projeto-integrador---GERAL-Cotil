@@ -46,7 +46,10 @@ class AccountRepository {
   // ★ API: POST /api/auth/oauth/google (LOGIN COM GOOGLE) ★
   // Manda a credencial JWT assinada pelo Google pro servidor verificar e logar! (づ｡◕‿‿◕｡)づ
   // ==========================================================================
-  Future<AuthResult> loginWithGoogle({required String credential, required String nonce}) async {
+  Future<AuthResult> loginWithGoogle({
+    required String credential,
+    required String nonce,
+  }) async {
     final data = await _api.post('/api/auth/oauth/google', {
       'credential': credential,
       'nonce': nonce,
@@ -109,23 +112,33 @@ class AccountRepository {
 
   // API: PUT /api/org/me
   // Atualiza as informações da empresa no sistema (*¯︶¯*)
-  Future<void> updateOrganization({String? name, String? cnpj, String? address}) =>
-      _api.put('/api/org/me', {
-        if (name != null) 'name': name,
-        if (cnpj != null) 'cnpj': cnpj,
-        if (address != null) 'address': address,
-      });
+  Future<void> updateOrganization({
+    String? name,
+    String? cnpj,
+    String? address,
+  }) => _api.put('/api/org/me', {
+    if (name != null) 'name': name,
+    if (cnpj != null) 'cnpj': cnpj,
+    if (address != null) 'address': address,
+  });
 
   // API: GET /api/org/units
   // Lista filiais ou unidades de negócio cadastradas na organização (｡•̀ᴗ-)✧
   Future<List<OrgUnit>> units() async {
     final data = await _api.get('/api/org/units');
-    return (data as List).cast<Map<String, dynamic>>().map(OrgUnit.fromJson).toList();
+    return (data as List)
+        .cast<Map<String, dynamic>>()
+        .map(OrgUnit.fromJson)
+        .toList();
   }
 
   // API: POST /api/org/units
   // Cria uma nova unidade física ou filial para organizar os armazéns :3
-  Future<OrgUnit> createUnit({required String code, required String name, String? description}) async {
+  Future<OrgUnit> createUnit({
+    required String code,
+    required String name,
+    String? description,
+  }) async {
     final data = await _api.post('/api/org/units', {
       'code': code,
       'name': name,
@@ -139,15 +152,22 @@ class AccountRepository {
   Future<void> deleteUnit(int id) => _api.delete('/api/org/units/$id');
 
   // API: GET /api/org/invites
-  // Lista convites pendentes enviados por e-mail para novos membros da equipe (TwT)
+  // Lista os convites; enviar por e-mail é uma ação explícita separada.
   Future<List<OrgInvite>> invites() async {
     final data = await _api.get('/api/org/invites');
-    return (data as List).cast<Map<String, dynamic>>().map(OrgInvite.fromJson).toList();
+    return (data as List)
+        .cast<Map<String, dynamic>>()
+        .map(OrgInvite.fromJson)
+        .toList();
   }
 
   // API: POST /api/org/invites
   // Cria um convite para outra pessoa entrar na mesma organização (づ｡◕‿‿◕｡)づ
-  Future<OrgInvite> createInvite({String? email, required String role, int expiresHours = 48}) async {
+  Future<OrgInvite> createInvite({
+    String? email,
+    required String role,
+    int expiresHours = 48,
+  }) async {
     final data = await _api.post('/api/org/invites', {
       if (email != null && email.isNotEmpty) 'email': email,
       'role': role,
@@ -156,11 +176,28 @@ class AccountRepository {
     return OrgInvite.fromJson(data as Map<String, dynamic>);
   }
 
+  Future<String> sendInviteEmail(int id) async {
+    final result = await _api.remote(
+      'POST',
+      '/api/org/invites/$id/email',
+      body: {},
+    );
+    if (result is! Map || result['message'] is! String) {
+      throw const ApiException(
+        'Resposta inválida da API. Confira o convite antes de tentar novamente.',
+      );
+    }
+    return result['message'] as String;
+  }
+
   // API: GET /api/org/users
   // Lista todos os usuários que trabalham nessa organização com seus cargos (o^▽^o)
   Future<List<OrgMember>> members() async {
     final data = await _api.get('/api/org/users');
-    return (data as List).cast<Map<String, dynamic>>().map(OrgMember.fromJson).toList();
+    return (data as List)
+        .cast<Map<String, dynamic>>()
+        .map(OrgMember.fromJson)
+        .toList();
   }
 
   // API: PUT /api/org/users/:id
