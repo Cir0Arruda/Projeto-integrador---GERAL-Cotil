@@ -7,13 +7,19 @@ const root=path.resolve(__dirname,'../..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function vacantPort(){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 function command(exe,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});let output='';child.stdout.on('data',data=>{if(output.length<4000)output+=data;});child.stderr.on('data',()=>{});const timer=setTimeout(()=>{child.kill();reject(Error('SANDBOX_COMMAND_TIMEOUT'));},60000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',code=>{clearTimeout(timer);code===0?resolve(output):reject(Object.assign(new Error('SANDBOX_COMMAND_FAILED'),{code}));});child.stdin.end(input);});}
-async function removeOwnedWorkspace(workspace){const runtime=await fs.realpath(path.join(root,'tests','.runtime')),resolved=await fs.realpath(workspace);if(path.dirname(resolved)!==runtime||!path.basename(resolved).startsWith('mysql-'))throw Error('SANDBOX_CLEANUP_PATH_REJECTED');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
+async function removeOwnedWorkspace(workspace,runtimeRoot){const runtime=await fs.realpath(runtimeRoot),resolved=await fs.realpath(workspace);if(path.dirname(resolved)!==runtime||!path.basename(resolved).startsWith('mysql-'))throw Error('SANDBOX_CLEANUP_PATH_REJECTED');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 async function startSandbox({allowRestoreTest=false}={}){
  const windows=process.platform==='win32';
  if(!windows&&process.platform!=='linux')throw Error('SANDBOX_PLATFORM_UNSUPPORTED');
  const bin=process.env.ASTHA_TEST_MYSQL_BIN||(windows?'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin':'/usr/sbin');
  const mysqld=path.join(bin,windows?'mysqld.exe':'mysqld'),cli=windows?path.join(bin,'mysql.exe'):(process.env.ASTHA_TEST_MYSQL_CLI||'/usr/bin/mysql');await fs.access(mysqld);await fs.access(cli);
- const workspace=await fs.mkdtemp(path.join(await fs.mkdir(path.join(root,'tests','.runtime'),{recursive:true}).then(()=>path.join(root,'tests','.runtime')),'mysql-'));
+ // AF_UNIX socket paths are limited to about 108 bytes. CI checkout paths are
+ // longer than that, so Linux uses a newly-created child of RUNNER_TEMP.
+ if(!windows&&(process.env.GITHUB_ACTIONS!=='true'||!process.env.RUNNER_TEMP))throw Error('SANDBOX_LINUX_CI_REQUIRED');
+ const runtimeRoot=windows?path.join(root,'tests','.runtime'):path.resolve(process.env.RUNNER_TEMP);
+ if(!windows&&Buffer.byteLength(path.join(runtimeRoot,'mysql-XXXXXX','mysql.sock'))>100)throw Error('SANDBOX_SOCKET_PATH_TOO_LONG');
+ await fs.mkdir(runtimeRoot,{recursive:true});
+ const workspace=await fs.mkdtemp(path.join(runtimeRoot,'mysql-'));
  const data=path.join(workspace,'data'),log=path.join(workspace,'mysql.log'),pipe=windows?'ASTHA_TEST_'+randomBytes(8).toString('hex'):path.join(workspace,'mysql.sock');
  const password=randomBytes(36).toString('hex'),db='astha_test_'+randomBytes(8).toString('hex'),port=await vacantPort();
  const base=['--no-defaults','--basedir='+path.dirname(bin),'--datadir='+data,'--log-error='+log,'--mysqlx=0','--skip-log-bin',...(!windows?['--socket='+pipe,'--pid-file='+path.join(workspace,'mysql.pid')]:[])];
@@ -50,8 +56,8 @@ async function startSandbox({allowRestoreTest=false}={}){
   pool=mysql.createPool({host:'127.0.0.1',port,user:'astha_test',password,database:db,multipleStatements:false,flags:'-LOCAL_FILES',connectionLimit:8,queueLimit:100});
   const connectionModule=require('../../api/database/connection');connectionModule.pool=pool;connectionModule.readWithRetry=(sql,params)=>pool.execute(sql,params);
   let lastFailure=null;const track=target=>{const original=target.execute.bind(target);target.execute=async(sql,params)=>{try{return await original(sql,params);}catch(error){lastFailure={code:error.code,operation:sql.split(/\s+/).slice(0,4).join(' ')};throw error;}};};track(pool);const acquire=pool.getConnection.bind(pool);pool.getConnection=async()=>{const item=await acquire();if(!item.testTracked){track(item);item.testTracked=true;}return item;};
-  return{pool,admin,db,workspace,port,lastFailure:()=>lastFailure,async close(){await pool.end();try{await admin.query('SHUTDOWN');}catch(_){}await admin.end().catch(()=>{});if(processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null){processHandle.kill();await new Promise(resolve=>processHandle.once('exit',resolve));}}await removeOwnedWorkspace(workspace);}};
- }catch(error){await pool?.end().catch(()=>{});await admin?.query('SHUTDOWN').catch(()=>{});await admin?.end().catch(()=>{});if(processHandle&&processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null)processHandle.kill();}if(!processHandle||processHandle.exitCode!==null)await removeOwnedWorkspace(workspace);throw error;}
+  return{pool,admin,db,workspace,port,lastFailure:()=>lastFailure,async close(){await pool.end();try{await admin.query('SHUTDOWN');}catch(_){}await admin.end().catch(()=>{});if(processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null){processHandle.kill();await new Promise(resolve=>processHandle.once('exit',resolve));}}await removeOwnedWorkspace(workspace,runtimeRoot);}};
+ }catch(error){await pool?.end().catch(()=>{});await admin?.query('SHUTDOWN').catch(()=>{});await admin?.end().catch(()=>{});if(processHandle&&processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null)processHandle.kill();}if(!processHandle||processHandle.exitCode!==null)await removeOwnedWorkspace(workspace,runtimeRoot);throw error;}
 }
 module.exports={startSandbox,root};
 if(require.main===module)startSandbox().then(async sandbox=>{console.log('ISOLATED_MYSQL_READY');await sandbox.close();console.log('ISOLATED_MYSQL_STOPPED');}).catch(error=>{console.error('ISOLATED_MYSQL_FAILED:'+error.message);process.exitCode=1;});

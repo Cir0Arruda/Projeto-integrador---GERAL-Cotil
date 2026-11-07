@@ -21,11 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      ANDROID_USER_HOME: ${{ runner.temp }}/astha-auth-android
-      ANDROID_EMULATOR_HOME: ${{ runner.temp }}/astha-auth-android
-      ANDROID_AVD_HOME: ${{ runner.temp }}/astha-auth-android/avd
       ASTHA_ISOLATED_NATIVE_QA: 'true'
-      ASTHA_NATIVE_EVIDENCE_DIR: ${{ runner.temp }}/astha-authenticated-native-qa
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -37,8 +33,12 @@ jobs:
           git -C "$RUNNER_TEMP/flutter" checkout --detach 4cf24164269a5ebf0c16a028a00727d0e77bbb05
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/astha-auth-android" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/astha-auth-android" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/astha-auth-android/avd" >> "$GITHUB_ENV"
+          echo "ASTHA_NATIVE_EVIDENCE_DIR=$RUNNER_TEMP/astha-authenticated-native-qa" >> "$GITHUB_ENV"
           npm ci --prefix apps/web/api --ignore-scripts
-          mkdir -p "$ASTHA_NATIVE_EVIDENCE_DIR" "$ANDROID_AVD_HOME"
+          mkdir -p "$RUNNER_TEMP/astha-authenticated-native-qa" "$RUNNER_TEMP/astha-auth-android/avd"
           command -v mysqld
           command -v mysql
       - name: Resolve locked Flutter dependencies and analyze the new probe
