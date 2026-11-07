@@ -6,27 +6,52 @@ const mysql=require('../../api/node_modules/mysql2/promise');
 const root=path.resolve(__dirname,'../..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function vacantPort(){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
-function command(exe,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});let output='';child.stdout.on('data',data=>{if(output.length<4000)output+=data;});child.stderr.on('data',()=>{});const timer=setTimeout(()=>{child.kill();reject(Error('SANDBOX_COMMAND_TIMEOUT'));},60000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',code=>{clearTimeout(timer);code===0?resolve(output):reject(Object.assign(new Error('SANDBOX_COMMAND_FAILED'),{code}));});child.stdin.end(input);});}
-async function removeOwnedWorkspace(workspace){const runtime=await fs.realpath(path.join(root,'tests','.runtime')),resolved=await fs.realpath(workspace);if(path.dirname(resolved)!==runtime||!path.basename(resolved).startsWith('mysql-'))throw Error('SANDBOX_CLEANUP_PATH_REJECTED');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
+function command(exe,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});let output='',initializationError='';child.stdout.on('data',data=>{if(output.length<4000)output+=data;});child.stderr.on('data',data=>{if(args.includes('--initialize-insecure')&&initializationError.length<3000)initializationError+=data;});const timer=setTimeout(()=>{child.kill();reject(Error('SANDBOX_COMMAND_TIMEOUT'));},60000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',code=>{clearTimeout(timer);if(code!==0&&args.includes('--initialize-insecure')&&initializationError)console.error('ISOLATED_MYSQL_INITIALIZE_STDERR',initializationError);code===0?resolve(output):reject(Object.assign(new Error('SANDBOX_COMMAND_FAILED'),{code,sandboxStage:args.includes('--initialize-insecure')?'INITIALIZE':'PRIVATE_BOOTSTRAP_SQL'}));});child.stdin.end(input);});}
+async function removeOwnedWorkspace(workspace,runtimeRoot){const runtime=await fs.realpath(runtimeRoot),resolved=await fs.realpath(workspace);if(path.dirname(resolved)!==runtime||!path.basename(resolved).startsWith('mysql-'))throw Error('SANDBOX_CLEANUP_PATH_REJECTED');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 async function startSandbox({allowRestoreTest=false}={}){
- const bin=process.env.ASTHA_TEST_MYSQL_BIN||'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin';
- const mysqld=path.join(bin,'mysqld.exe'),cli=path.join(bin,'mysql.exe');await fs.access(mysqld);await fs.access(cli);
- const workspace=await fs.mkdtemp(path.join(await fs.mkdir(path.join(root,'tests','.runtime'),{recursive:true}).then(()=>path.join(root,'tests','.runtime')),'mysql-'));
+ const windows=process.platform==='win32';
+ if(!windows&&process.platform!=='linux')throw Error('SANDBOX_PLATFORM_UNSUPPORTED');
+ const bin=process.env.ASTHA_TEST_MYSQL_BIN||(windows?'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin':'/usr/sbin');
+ const mysqld=path.join(bin,windows?'mysqld.exe':'mysqld'),cli=windows?path.join(bin,'mysql.exe'):(process.env.ASTHA_TEST_MYSQL_CLI||'/usr/bin/mysql');if(windows){await fs.access(mysqld);await fs.access(cli);}
+ // Linux keeps only private fixture inputs in RUNNER_TEMP. Database data is
+ // confined to an owned container's tmpfs; no host policy is relaxed.
+ if(!windows&&(process.env.GITHUB_ACTIONS!=='true'||!process.env.RUNNER_TEMP))throw Error('SANDBOX_LINUX_CI_REQUIRED');
+ const runtimeRoot=windows?path.join(root,'tests','.runtime'):path.resolve(process.env.RUNNER_TEMP);
+ await fs.mkdir(runtimeRoot,{recursive:true});
+ const workspace=await fs.mkdtemp(path.join(runtimeRoot,'mysql-'));
  const data=path.join(workspace,'data'),log=path.join(workspace,'mysql.log'),pipe='ASTHA_TEST_'+randomBytes(8).toString('hex');
  const password=randomBytes(36).toString('hex'),db='astha_test_'+randomBytes(8).toString('hex'),port=await vacantPort();
  const base=['--no-defaults','--basedir='+path.dirname(bin),'--datadir='+data,'--log-error='+log,'--mysqlx=0','--skip-log-bin'];
- let processHandle=null,admin=null,pool=null;
+ let processHandle=null,admin=null,pool=null,initializationComplete=false,linuxContainer=null;
  async function launch(args){processHandle=spawn(mysqld,[...base,...args],{windowsHide:true,stdio:'ignore'});processHandle.on('error',()=>{});}
- async function pipeCommand(sql){return command(cli,['--no-defaults','--protocol=PIPE','--socket='+pipe,'--user=root','--batch','--skip-column-names'],sql);}
+ async function pipeCommand(sql){return command(cli,['--no-defaults','--protocol='+(windows?'PIPE':'SOCKET'),'--socket='+pipe,'--user=root','--batch','--skip-column-names'],sql);}
  try{
+  if(windows){
   await command(mysqld,[...base,'--initialize-insecure']);
-  await launch(['--skip-networking','--named-pipe=ON','--socket='+pipe]);
+  initializationComplete=true;
+  await launch(['--skip-networking',...(windows?['--named-pipe=ON']:[]),'--socket='+pipe]);
   let ready=false;for(let n=0;n<100;n++){try{await pipeCommand('SELECT 1;');ready=true;break;}catch(_){if(processHandle.exitCode!==null)break;await delay(200);}}
   if(!ready)throw Error('SANDBOX_BOOTSTRAP_UNAVAILABLE');
   // Credentials go through stdin, never command arguments, a file, logs or test reports.
   await pipeCommand("CREATE DATABASE "+db+" CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nCREATE USER 'astha_bootstrap'@'127.0.0.1' IDENTIFIED WITH caching_sha2_password BY '"+password+"';\nGRANT ALL PRIVILEGES ON "+db+".* TO 'astha_bootstrap'@'127.0.0.1' WITH GRANT OPTION;\n"+(allowRestoreTest?"GRANT ALL PRIVILEGES ON astha_restore_test.* TO 'astha_bootstrap'@'127.0.0.1';\n":"")+"GRANT SHUTDOWN ON *.* TO 'astha_bootstrap'@'127.0.0.1';\nCREATE USER 'astha_test'@'127.0.0.1' IDENTIFIED WITH caching_sha2_password BY '"+password+"';\nGRANT SELECT,INSERT,UPDATE,DELETE ON "+db+".* TO 'astha_test'@'127.0.0.1';\nALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '"+password+"';\nSHUTDOWN;");
   if(processHandle.exitCode===null)await new Promise(resolve=>processHandle.once('exit',resolve));
   await launch(['--bind-address=127.0.0.1','--port='+port,'--skip-name-resolve']);
+  }else{
+   // The hosted runner restricts native mysqld filesystem access. Use a new
+   // container with tmpfs data instead of weakening host policy or permissions.
+   linuxContainer=await require('./owned-linux-mysql.cjs').startOwnedLinuxMysql({password,port});
+   processHandle=linuxContainer.processHandle;
+   const rootDb=linuxContainer.root,identifier=mysql.escapeId(db);
+   try{
+    await rootDb.query('CREATE DATABASE '+identifier+' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+    for(const user of ['astha_bootstrap','astha_test'])await rootDb.query("CREATE USER '"+user+"'@'127.0.0.1' IDENTIFIED WITH caching_sha2_password BY ?",[password]);
+    await rootDb.query('GRANT ALL PRIVILEGES ON '+identifier+".* TO 'astha_bootstrap'@'127.0.0.1' WITH GRANT OPTION");
+    if(allowRestoreTest)await rootDb.query("GRANT ALL PRIVILEGES ON astha_restore_test.* TO 'astha_bootstrap'@'127.0.0.1'");
+    await rootDb.query("GRANT SHUTDOWN ON *.* TO 'astha_bootstrap'@'127.0.0.1'");
+    await rootDb.query('GRANT SELECT,INSERT,UPDATE,DELETE ON '+identifier+".* TO 'astha_test'@'127.0.0.1'");
+   }finally{await rootDb.end();}
+   initializationComplete=true;
+  }
   let connected=false,lastCode;for(let n=0;n<100;n++){try{admin=await mysql.createConnection({host:'127.0.0.1',port,user:'astha_bootstrap',password,database:db,multipleStatements:false,connectTimeout:1000});connected=true;break;}catch(error){lastCode=error.code;if(processHandle.exitCode!==null)break;await delay(200);}}
   if(!connected)throw Error('SANDBOX_TCP_UNAVAILABLE:'+lastCode);
   // Only trusted CREATE TABLE statements from the existing schema; never DROP/USE or seed production accounts.
@@ -48,8 +73,8 @@ async function startSandbox({allowRestoreTest=false}={}){
   pool=mysql.createPool({host:'127.0.0.1',port,user:'astha_test',password,database:db,multipleStatements:false,flags:'-LOCAL_FILES',connectionLimit:8,queueLimit:100});
   const connectionModule=require('../../api/database/connection');connectionModule.pool=pool;connectionModule.readWithRetry=(sql,params)=>pool.execute(sql,params);
   let lastFailure=null;const track=target=>{const original=target.execute.bind(target);target.execute=async(sql,params)=>{try{return await original(sql,params);}catch(error){lastFailure={code:error.code,operation:sql.split(/\s+/).slice(0,4).join(' ')};throw error;}};};track(pool);const acquire=pool.getConnection.bind(pool);pool.getConnection=async()=>{const item=await acquire();if(!item.testTracked){track(item);item.testTracked=true;}return item;};
-  return{pool,admin,db,workspace,port,lastFailure:()=>lastFailure,async close(){await pool.end();try{await admin.query('SHUTDOWN');}catch(_){}await admin.end().catch(()=>{});if(processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null){processHandle.kill();await new Promise(resolve=>processHandle.once('exit',resolve));}}await removeOwnedWorkspace(workspace);}};
- }catch(error){await pool?.end().catch(()=>{});await admin?.query('SHUTDOWN').catch(()=>{});await admin?.end().catch(()=>{});if(processHandle&&processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null)processHandle.kill();}if(!processHandle||processHandle.exitCode!==null)await removeOwnedWorkspace(workspace);throw error;}
+  return{pool,admin,db,workspace,port,lastFailure:()=>lastFailure,async close(){await pool.end();try{await admin.query('SHUTDOWN');}catch(_){}await admin.end().catch(()=>{});if(linuxContainer){await linuxContainer.close();}else if(processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null){processHandle.kill();await new Promise(resolve=>processHandle.once('exit',resolve));}}await removeOwnedWorkspace(workspace,runtimeRoot);}};
+ }catch(error){if(windows&&!initializationComplete){/* No credentials have reached MySQL during initialize-insecure. */const diagnostic=await fs.readFile(log,'utf8').catch(()=> 'Initialization log unavailable');console.error('ISOLATED_MYSQL_INITIALIZATION_DIAGNOSTIC',diagnostic.slice(-4000));}await pool?.end().catch(()=>{});await admin?.query('SHUTDOWN').catch(()=>{});await admin?.end().catch(()=>{});if(linuxContainer){await linuxContainer.close();}else if(processHandle&&processHandle.exitCode===null){await Promise.race([new Promise(resolve=>processHandle.once('exit',resolve)),delay(5000)]);if(processHandle.exitCode===null)processHandle.kill();}if(!processHandle||processHandle.exitCode!==null)await removeOwnedWorkspace(workspace,runtimeRoot);throw error;}
 }
 module.exports={startSandbox,root};
 if(require.main===module)startSandbox().then(async sandbox=>{console.log('ISOLATED_MYSQL_READY');await sandbox.close();console.log('ISOLATED_MYSQL_STOPPED');}).catch(error=>{console.error('ISOLATED_MYSQL_FAILED:'+error.message);process.exitCode=1;});
