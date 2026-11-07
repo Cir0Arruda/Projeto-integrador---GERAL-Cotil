@@ -7,6 +7,7 @@ on:
       - 'apps/mobile/integration_test/authenticated_background_probe_app.dart'
       - 'apps/web/tests/integration/native-background-auth.cjs'
       - 'apps/web/tests/integration/analytics-sandbox.js'
+      - 'apps/web/tests/integration/owned-linux-mysql.cjs'
       - '.github/workflows/authenticated-background-validation.yml'
 permissions:
   contents: read
@@ -39,8 +40,7 @@ jobs:
           echo "ASTHA_NATIVE_EVIDENCE_DIR=$RUNNER_TEMP/astha-authenticated-native-qa" >> "$GITHUB_ENV"
           npm ci --prefix apps/web/api --ignore-scripts
           mkdir -p "$RUNNER_TEMP/astha-authenticated-native-qa" "$RUNNER_TEMP/astha-auth-android/avd"
-          command -v mysqld
-          command -v mysql
+          command -v docker
       - name: Verify the separately-owned Linux database and API fixture
         run: node apps/web/tests/integration/native-background-auth.cjs --selftest
       - name: Resolve locked Flutter dependencies and analyze the new probe
