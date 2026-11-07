@@ -9,18 +9,20 @@ async function vacantPort(){const server=net.createServer();await new Promise((r
 function command(exe,args,input=''){return new Promise((resolve,reject)=>{const child=spawn(exe,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});let output='';child.stdout.on('data',data=>{if(output.length<4000)output+=data;});child.stderr.on('data',()=>{});const timer=setTimeout(()=>{child.kill();reject(Error('SANDBOX_COMMAND_TIMEOUT'));},60000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',code=>{clearTimeout(timer);code===0?resolve(output):reject(Object.assign(new Error('SANDBOX_COMMAND_FAILED'),{code}));});child.stdin.end(input);});}
 async function removeOwnedWorkspace(workspace){const runtime=await fs.realpath(path.join(root,'tests','.runtime')),resolved=await fs.realpath(workspace);if(path.dirname(resolved)!==runtime||!path.basename(resolved).startsWith('mysql-'))throw Error('SANDBOX_CLEANUP_PATH_REJECTED');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 async function startSandbox({allowRestoreTest=false}={}){
- const bin=process.env.ASTHA_TEST_MYSQL_BIN||'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin';
- const mysqld=path.join(bin,'mysqld.exe'),cli=path.join(bin,'mysql.exe');await fs.access(mysqld);await fs.access(cli);
+ const windows=process.platform==='win32';
+ if(!windows&&process.platform!=='linux')throw Error('SANDBOX_PLATFORM_UNSUPPORTED');
+ const bin=process.env.ASTHA_TEST_MYSQL_BIN||(windows?'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin':'/usr/sbin');
+ const mysqld=path.join(bin,windows?'mysqld.exe':'mysqld'),cli=windows?path.join(bin,'mysql.exe'):(process.env.ASTHA_TEST_MYSQL_CLI||'/usr/bin/mysql');await fs.access(mysqld);await fs.access(cli);
  const workspace=await fs.mkdtemp(path.join(await fs.mkdir(path.join(root,'tests','.runtime'),{recursive:true}).then(()=>path.join(root,'tests','.runtime')),'mysql-'));
- const data=path.join(workspace,'data'),log=path.join(workspace,'mysql.log'),pipe='ASTHA_TEST_'+randomBytes(8).toString('hex');
+ const data=path.join(workspace,'data'),log=path.join(workspace,'mysql.log'),pipe=windows?'ASTHA_TEST_'+randomBytes(8).toString('hex'):path.join(workspace,'mysql.sock');
  const password=randomBytes(36).toString('hex'),db='astha_test_'+randomBytes(8).toString('hex'),port=await vacantPort();
- const base=['--no-defaults','--basedir='+path.dirname(bin),'--datadir='+data,'--log-error='+log,'--mysqlx=0','--skip-log-bin'];
+ const base=['--no-defaults','--basedir='+path.dirname(bin),'--datadir='+data,'--log-error='+log,'--mysqlx=0','--skip-log-bin',...(!windows?['--socket='+pipe,'--pid-file='+path.join(workspace,'mysql.pid')]:[])];
  let processHandle=null,admin=null,pool=null;
  async function launch(args){processHandle=spawn(mysqld,[...base,...args],{windowsHide:true,stdio:'ignore'});processHandle.on('error',()=>{});}
- async function pipeCommand(sql){return command(cli,['--no-defaults','--protocol=PIPE','--socket='+pipe,'--user=root','--batch','--skip-column-names'],sql);}
+ async function pipeCommand(sql){return command(cli,['--no-defaults','--protocol='+(windows?'PIPE':'SOCKET'),'--socket='+pipe,'--user=root','--batch','--skip-column-names'],sql);}
  try{
   await command(mysqld,[...base,'--initialize-insecure']);
-  await launch(['--skip-networking','--named-pipe=ON','--socket='+pipe]);
+  await launch(['--skip-networking',...(windows?['--named-pipe=ON']:[]),'--socket='+pipe]);
   let ready=false;for(let n=0;n<100;n++){try{await pipeCommand('SELECT 1;');ready=true;break;}catch(_){if(processHandle.exitCode!==null)break;await delay(200);}}
   if(!ready)throw Error('SANDBOX_BOOTSTRAP_UNAVAILABLE');
   // Credentials go through stdin, never command arguments, a file, logs or test reports.
