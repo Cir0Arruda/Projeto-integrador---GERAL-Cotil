@@ -77,6 +77,7 @@ async function main({ selftest = false } = {}) {
     phase = 'isolated-api';
     app = await startAuditApp({ port: 3001, password, fixtures: [{ id: org, type: 'corporate' }] });
     assert.match(app.db, /^astha_test_[a-f0-9]+$/);
+    assert.equal(typeof app.workspace, 'string');
     phase = 'fixture-login';
     const login = await request('POST','/auth/login',{ email: app.accounts[0].email, password },false);
     assert.equal(typeof login.token, 'string'); token = login.token;

@@ -7,6 +7,7 @@ on:
       - 'apps/mobile/integration_test/authenticated_background_probe_app.dart'
       - 'apps/web/tests/integration/native-background-auth.cjs'
       - 'apps/web/tests/integration/analytics-sandbox.js'
+      - 'apps/web/tests/integration/audit-app-sandbox.cjs'
       - 'apps/web/tests/integration/owned-linux-mysql.cjs'
       - '.github/workflows/authenticated-background-validation.yml'
 permissions:

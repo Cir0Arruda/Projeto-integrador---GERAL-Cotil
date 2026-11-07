@@ -52,7 +52,7 @@ async function startAuditApp({port=5183,fixtures=[{id:'audit-corporate',type:'co
   const {app}=require('../../api/server');
   server=await new Promise((resolve,reject)=>{const s=app.listen(port,'127.0.0.1',()=>resolve(s));s.on('error',reject);});
   stopAnalytics=require('../../api/routes/analytics').startProcessor();
-  return {accounts,port,pool,admin,db,close};
+  return {accounts,port,pool,admin,db,workspace:sandbox.workspace,close};
  }catch(error){await close();throw error;}
 }
 async function main(){
